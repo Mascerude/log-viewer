@@ -3,7 +3,7 @@
 export const LEVEL_ORDER = ["Debug", "Info", "Warning", "Error", "Fatal"];
 
 export const LEVEL_COLORS = {
-  Debug: "#898781", // muted ink
+  Debug: "#8a8a8a", // muted ink
   Info: "#0ca30c", // good
   Warning: "#fab219", // warning
   Error: "#ec835a", // serious

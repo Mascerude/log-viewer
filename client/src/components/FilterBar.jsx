@@ -1,4 +1,6 @@
 import { LEVEL_COLORS, LEVEL_LETTERS, LEVEL_ORDER } from "../levelColors";
+import DateRangePicker from "./DateRangePicker";
+import { FilterXIcon } from "./icons";
 
 export default function FilterBar({ filters, onChange, services, sources, minDate, maxDate }) {
   function set(patch) {
@@ -22,24 +24,8 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
   return (
     <div className="filter-bar">
       <div className="filter-group">
-        <label htmlFor="from">Von</label>
-        <input
-          id="from"
-          type="date"
-          value={filters.from}
-          min={minDate}
-          max={filters.to || maxDate}
-          onChange={(e) => set({ from: e.target.value })}
-        />
-        <label htmlFor="to">Bis</label>
-        <input
-          id="to"
-          type="date"
-          value={filters.to}
-          min={filters.from || minDate}
-          max={maxDate}
-          onChange={(e) => set({ to: e.target.value })}
-        />
+        <label>Zeitraum</label>
+        <DateRangePicker from={filters.from} to={filters.to} minDate={minDate} maxDate={maxDate} onChange={set} />
       </div>
 
       <div className="filter-group level-toggles" role="group" aria-label="Level filtern">
@@ -103,17 +89,6 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
       )}
 
       <div className="filter-group">
-        <label htmlFor="search">Suche</label>
-        <input
-          id="search"
-          type="text"
-          placeholder="Nachricht durchsuchen..."
-          value={filters.search}
-          onChange={(e) => set({ search: e.target.value })}
-        />
-      </div>
-
-      <div className="filter-group">
         <label htmlFor="pid">PID</label>
         <input
           id="pid"
@@ -122,6 +97,9 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
           value={filters.pid}
           onChange={(e) => set({ pid: e.target.value.replace(/\D/g, "") })}
         />
+      </div>
+
+      <div className="filter-group">
         <label htmlFor="tid">TID</label>
         <input
           id="tid"
@@ -132,9 +110,22 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
         />
       </div>
 
+      <div className="filter-group filter-group-search">
+        <label htmlFor="search">Suche</label>
+        <input
+          id="search"
+          type="text"
+          placeholder="Nachricht durchsuchen..."
+          value={filters.search}
+          onChange={(e) => set({ search: e.target.value })}
+        />
+      </div>
+
       <button
         type="button"
         className="reset-button"
+        title="Filter zurücksetzen"
+        aria-label="Filter zurücksetzen"
         onClick={() =>
           set({
             from: "",
@@ -148,7 +139,7 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
           })
         }
       >
-        Filter zurücksetzen
+        <FilterXIcon />
       </button>
     </div>
   );

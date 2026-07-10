@@ -4,6 +4,7 @@ import { LEVEL_LETTERS } from "../levelColors";
 import FilterBar from "./FilterBar";
 import ErrorChart from "./ErrorChart";
 import LogTable from "./LogTable";
+import { RefreshIcon } from "./icons";
 
 const ALL_LETTERS = new Set(Object.values(LEVEL_LETTERS));
 const PAGE_SIZE = 100;
@@ -123,7 +124,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
           {lastUpdated && <span>Aktualisiert: {lastUpdated.toLocaleTimeString("de-DE")}</span>}
           {refreshIntervalSeconds > 0 && <span> · automatisch alle {refreshIntervalSeconds}s</span>}
           <button type="button" className="settings-button" onClick={() => setRefreshTick((t) => t + 1)}>
-            ↻ Jetzt aktualisieren
+            <RefreshIcon /> Jetzt aktualisieren
           </button>
         </div>
       </div>

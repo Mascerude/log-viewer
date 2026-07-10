@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
+import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
+import LogEntryModal from "./LogEntryModal";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -9,6 +12,7 @@ function formatTimestamp(iso) {
 export default function LogTable({ entries, total, page, pageSize, loading, error, showSource, onPageChange }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const colCount = showSource ? 6 : 5;
+  const [selectedEntry, setSelectedEntry] = useState(null);
 
   return (
     <div className="table-card">
@@ -42,7 +46,13 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
               </tr>
             )}
             {entries.map((e) => (
-              <tr key={e.id} style={{ "--row-color": LEVEL_COLORS[e.levelName] }}>
+              <tr
+                key={e.id}
+                style={{ "--row-color": LEVEL_COLORS[e.levelName] }}
+                className="log-row"
+                onDoubleClick={() => setSelectedEntry(e)}
+                title="Doppelklick für Details"
+              >
                 <td className="col-time">{formatTimestamp(e.timestamp)}</td>
                 <td className="col-level">
                   <span className="level-badge" style={{ "--badge-color": LEVEL_COLORS[e.levelName] }}>
@@ -64,15 +74,17 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
 
       <div className="pagination">
         <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          ← Zurück
+          <ChevronLeftIcon /> Zurück
         </button>
         <span>
           Seite {page} von {pageCount}
         </span>
         <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
-          Weiter →
+          Weiter <ChevronRightIcon />
         </button>
       </div>
+
+      <LogEntryModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
     </div>
   );
 }

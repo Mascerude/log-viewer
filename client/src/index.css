@@ -1,39 +1,42 @@
-/* Dark, dense developer-tool theme (reference: SigNoz) — dark by default,
-   with a lighter variant for users who prefer light. */
+/* Vercel-style theme (https://21st.dev/@serafim/themes/vercel): near-monochrome
+   surfaces with a black/white primary accent. Light is the default; dark
+   applies via [data-theme="dark"] or, absent an explicit choice, the OS
+   preference. See ThemeToggle for how the attribute gets set. */
 :root {
-  --text: #9195a1;
-  --text-h: #eef0f3;
-  --bg: #16171d;
-  --page-bg: #0a0b0f;
-  --border: #2a2c35;
-  --border-soft: rgba(255, 255, 255, 0.08);
-  --code-bg: #1c1e26;
-  --accent: #4d7fff;
-  --accent-bg: rgba(77, 127, 255, 0.14);
-  --accent-border: rgba(77, 127, 255, 0.5);
-  --shadow-sm: rgba(0, 0, 0, 0.25) 0 1px 2px;
-  --shadow: rgba(0, 0, 0, 0.25) 0 1px 2px, rgba(0, 0, 0, 0.3) 0 6px 16px -8px;
-  --shadow-lg: rgba(0, 0, 0, 0.3) 0 2px 4px, rgba(0, 0, 0, 0.4) 0 12px 32px -12px;
+  --text: oklch(0.44 0 0);
+  --text-h: oklch(0 0 0);
+  --bg: oklch(0.97 0 0);
+  --page-bg: oklch(0.99 0 0);
+  --border: oklch(0.92 0 0);
+  --border-soft: color-mix(in oklch, oklch(0 0 0) 8%, transparent);
+  --code-bg: oklch(0.94 0 0);
+  --accent: oklch(0 0 0);
+  --accent-fg: oklch(1 0 0);
+  --accent-bg: color-mix(in oklch, var(--accent) 8%, transparent);
+  --accent-border: color-mix(in oklch, var(--accent) 35%, transparent);
+  --shadow-sm: 0px 1px 2px 0px hsl(0 0% 0% / 0.06);
+  --shadow: 0px 1px 2px 0px hsl(0 0% 0% / 0.06), 0px 4px 10px -4px hsl(0 0% 0% / 0.1);
+  --shadow-lg: 0px 2px 4px 0px hsl(0 0% 0% / 0.08), 0px 12px 28px -10px hsl(0 0% 0% / 0.14);
 
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
 
-  --surface-1: #121319;
-  --muted: #71747f;
-  --gridline: #23252e;
-  --baseline: #363945;
+  --surface-1: oklch(1 0 0);
+  --muted: oklch(0.44 0 0);
+  --gridline: oklch(0.92 0 0);
+  --baseline: oklch(0.72 0 0);
 
-  --good: #22c55e;
-  --critical: #f0576a;
+  --good: oklch(0.6 0.15 145);
+  --critical: oklch(0.63 0.19 23.03);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --heading: var(--sans);
+  --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
   font: 14px/145% var(--sans);
-  color-scheme: dark light;
+  color-scheme: light;
   color: var(--text);
   background: var(--page-bg);
   font-synthesis: none;
@@ -42,32 +45,54 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --text: #6b6375;
-    --text-h: #08060d;
-    --bg: #fff;
-    --page-bg: #f7f7f5;
-    --border: #e5e4e7;
-    --border-soft: rgba(11, 11, 11, 0.08);
-    --code-bg: #f4f3ec;
-    --accent: #3763e8;
-    --accent-bg: rgba(55, 99, 232, 0.1);
-    --accent-border: rgba(55, 99, 232, 0.5);
-    --shadow-sm: rgba(11, 11, 11, 0.06) 0 1px 2px;
-    --shadow:
-      rgba(11, 11, 11, 0.06) 0 1px 2px, rgba(11, 11, 11, 0.08) 0 8px 24px -8px;
-    --shadow-lg:
-      rgba(11, 11, 11, 0.08) 0 2px 4px, rgba(11, 11, 11, 0.12) 0 16px 40px -12px;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --text: oklch(0.72 0 0);
+    --text-h: oklch(1 0 0);
+    --bg: oklch(0.23 0 0);
+    --page-bg: oklch(0 0 0);
+    --border: oklch(0.26 0 0);
+    --border-soft: color-mix(in oklch, oklch(1 0 0) 8%, transparent);
+    --code-bg: oklch(0.25 0 0);
+    --accent: oklch(1 0 0);
+    --accent-fg: oklch(0 0 0);
+    --accent-bg: color-mix(in oklch, var(--accent) 12%, transparent);
+    --accent-border: color-mix(in oklch, var(--accent) 35%, transparent);
 
-    --surface-1: #fcfcfb;
-    --muted: #898781;
-    --gridline: #e1e0d9;
-    --baseline: #c3c2b7;
+    --surface-1: oklch(0.14 0 0);
+    --muted: oklch(0.72 0 0);
+    --gridline: oklch(0.26 0 0);
+    --baseline: oklch(0.44 0 0);
 
-    --good: #0ca30c;
-    --critical: #d03b3b;
+    --good: oklch(0.72 0.17 145);
+    --critical: oklch(0.69 0.2 23.91);
+
+    color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --text: oklch(0.72 0 0);
+  --text-h: oklch(1 0 0);
+  --bg: oklch(0.23 0 0);
+  --page-bg: oklch(0 0 0);
+  --border: oklch(0.26 0 0);
+  --border-soft: color-mix(in oklch, oklch(1 0 0) 8%, transparent);
+  --code-bg: oklch(0.25 0 0);
+  --accent: oklch(1 0 0);
+  --accent-fg: oklch(0 0 0);
+  --accent-bg: color-mix(in oklch, var(--accent) 12%, transparent);
+  --accent-border: color-mix(in oklch, var(--accent) 35%, transparent);
+
+  --surface-1: oklch(0.14 0 0);
+  --muted: oklch(0.72 0 0);
+  --gridline: oklch(0.26 0 0);
+  --baseline: oklch(0.44 0 0);
+
+  --good: oklch(0.72 0.17 145);
+  --critical: oklch(0.69 0.2 23.91);
+
+  color-scheme: dark;
 }
 
 * {
@@ -77,6 +102,7 @@
 body {
   margin: 0;
   background: var(--page-bg);
+  transition: background-color 0.15s ease;
 }
 
 #root {
@@ -90,7 +116,7 @@ h1,
 h2 {
   font-family: var(--heading);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text-h);
 }
 

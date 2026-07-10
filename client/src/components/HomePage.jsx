@@ -1,5 +1,5 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { LEVEL_COLORS } from "../levelColors";
+import { AlertIcon, RefreshIcon } from "./icons";
 
 function ServiceTooltip({ active, payload }) {
   if (!active || !payload || payload.length === 0) return null;
@@ -26,7 +26,7 @@ export default function HomePage({ summary, loading, error, updatedAt, onRefresh
       <div className="stat-tile-row">
         <div className="stat-tile stat-tile-hero">
           <div className="stat-tile-icon" aria-hidden="true">
-            ⚠
+            <AlertIcon />
           </div>
           <div>
             <div className="stat-tile-label">Alle Fehler der letzten 24 Stunden</div>
@@ -47,7 +47,7 @@ export default function HomePage({ summary, loading, error, updatedAt, onRefresh
           </div>
         </div>
         {data.length === 0 ? (
-          <div className="chart-empty">Keine Fehler in den letzten 24 Stunden. 🎉</div>
+          <div className="chart-empty">Keine Fehler in den letzten 24 Stunden.</div>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(120, data.length * 40)}>
             <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -70,7 +70,7 @@ export default function HomePage({ summary, loading, error, updatedAt, onRefresh
               <Tooltip content={<ServiceTooltip />} cursor={{ fill: "var(--accent-bg)" }} />
               <Bar
                 dataKey="count"
-                fill={LEVEL_COLORS.Error}
+                fill="var(--critical)"
                 radius={[0, 4, 4, 0]}
                 maxBarSize={20}
                 style={{ cursor: onSelectService ? "pointer" : undefined }}
@@ -93,7 +93,8 @@ export default function HomePage({ summary, loading, error, updatedAt, onRefresh
           <div className="refresh-info">
             {updatedAt && <span>Aktualisiert: {updatedAt.toLocaleTimeString("de-DE")}</span>}
             <button type="button" className="settings-button" onClick={onRefresh} disabled={loading}>
-              ↻ {loading ? "Aktualisiert..." : "Jetzt aktualisieren"}
+              <RefreshIcon className={loading ? "icon-spin" : undefined} />
+              {loading ? "Aktualisiert..." : "Jetzt aktualisieren"}
             </button>
           </div>
         </div>

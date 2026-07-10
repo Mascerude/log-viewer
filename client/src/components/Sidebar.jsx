@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import ThemeToggle from "./ThemeToggle";
+import { HomeIcon, SettingsIcon } from "./icons";
 
 export default function Sidebar({ sources, files, view, onSelectHome, onSelectService, onSelectSettings }) {
   const servicesBySource = useMemo(() => {
@@ -19,7 +21,8 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
     <nav className="sidebar">
       <div className="sidebar-brand">
         <span className="sidebar-brand-mark" aria-hidden="true" />
-        Log Viewer
+        <span className="sidebar-brand-text">Log Viewer</span>
+        <ThemeToggle />
       </div>
 
       <button
@@ -27,7 +30,7 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
         className={`sidebar-home${view.name === "home" ? " active" : ""}`}
         onClick={onSelectHome}
       >
-        🏠 Übersicht
+        <HomeIcon className="sidebar-icon" /> Übersicht
       </button>
 
       <div className="sidebar-sources">
@@ -70,7 +73,7 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
         className={`sidebar-settings${view.name === "settings" ? " active" : ""}`}
         onClick={onSelectSettings}
       >
-        ⚙ Einstellungen
+        <SettingsIcon className="sidebar-icon" /> Einstellungen
       </button>
     </nav>
   );
