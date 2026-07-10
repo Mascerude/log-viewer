@@ -1,0 +1,113 @@
+/* Dark, dense developer-tool theme (reference: SigNoz) — dark by default,
+   with a lighter variant for users who prefer light. */
+:root {
+  --text: #9195a1;
+  --text-h: #eef0f3;
+  --bg: #16171d;
+  --page-bg: #0a0b0f;
+  --border: #2a2c35;
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --code-bg: #1c1e26;
+  --accent: #4d7fff;
+  --accent-bg: rgba(77, 127, 255, 0.14);
+  --accent-border: rgba(77, 127, 255, 0.5);
+  --shadow-sm: rgba(0, 0, 0, 0.25) 0 1px 2px;
+  --shadow: rgba(0, 0, 0, 0.25) 0 1px 2px, rgba(0, 0, 0, 0.3) 0 6px 16px -8px;
+  --shadow-lg: rgba(0, 0, 0, 0.3) 0 2px 4px, rgba(0, 0, 0, 0.4) 0 12px 32px -12px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --surface-1: #121319;
+  --muted: #71747f;
+  --gridline: #23252e;
+  --baseline: #363945;
+
+  --good: #22c55e;
+  --critical: #f0576a;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 14px/145% var(--sans);
+  color-scheme: dark light;
+  color: var(--text);
+  background: var(--page-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --text: #6b6375;
+    --text-h: #08060d;
+    --bg: #fff;
+    --page-bg: #f7f7f5;
+    --border: #e5e4e7;
+    --border-soft: rgba(11, 11, 11, 0.08);
+    --code-bg: #f4f3ec;
+    --accent: #3763e8;
+    --accent-bg: rgba(55, 99, 232, 0.1);
+    --accent-border: rgba(55, 99, 232, 0.5);
+    --shadow-sm: rgba(11, 11, 11, 0.06) 0 1px 2px;
+    --shadow:
+      rgba(11, 11, 11, 0.06) 0 1px 2px, rgba(11, 11, 11, 0.08) 0 8px 24px -8px;
+    --shadow-lg:
+      rgba(11, 11, 11, 0.08) 0 2px 4px, rgba(11, 11, 11, 0.12) 0 16px 40px -12px;
+
+    --surface-1: #fcfcfb;
+    --muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+
+    --good: #0ca30c;
+    --critical: #d03b3b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: var(--mono);
+  border-radius: var(--radius-sm);
+  color: var(--text-h);
+  font-size: 13px;
+  padding: 2px 6px;
+  background: var(--code-bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
