@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { execFile } from "child_process";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { listLogFiles, parseLogFile } from "./parser.js";
 
@@ -17,6 +18,14 @@ const PORT = process.env.PORT || 4000;
 const CONFIG_PATH = path.resolve("config.json");
 const DEFAULT_REFRESH_SECONDS = 30;
 const MONITOR_INTERVAL_MS = 30_000;
+
+// Production build of the client (created by `npm run build` in client/), served
+// alongside the API so the app runs as a single process on a single port —
+// the client's relative /api fetches then just work, no dev-server proxy needed.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLIENT_DIST = path.join(__dirname, "..", "client", "dist");
+const CLIENT_BUILD_EXISTS = fs.existsSync(path.join(CLIENT_DIST, "index.html"));
+if (CLIENT_BUILD_EXISTS) app.use(express.static(CLIENT_DIST));
 
 function loadConfig() {
   try {
@@ -443,8 +452,23 @@ app.get("/api/summary", (req, res) => {
   });
 });
 
+// SPA fallback: any non-API route serves the client's index.html so client-side
+// navigation (and hard-reloading a deep link) works. Must stay last so it
+// never shadows an /api route above.
+if (CLIENT_BUILD_EXISTS) {
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(CLIENT_DIST, "index.html"));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`Log-Viewer Server läuft auf http://localhost:${PORT}`);
+  console.log(
+    CLIENT_BUILD_EXISTS
+      ? "  Frontend: Produktions-Build wird mit ausgeliefert (client/dist)"
+      : "  Frontend: kein Produktions-Build gefunden (client/dist) — nur die API läuft"
+  );
   for (const s of sources) {
     console.log(`  Quelle "${s.name}": ${s.path} (existiert: ${fs.existsSync(s.path)})`);
   }

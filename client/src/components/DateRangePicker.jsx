@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon } from "./icons";
 
 function pad2(n) {
@@ -48,16 +49,46 @@ const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 export default function DateRangePicker({ from, to, minDate, maxDate, onChange }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
+  const [coords, setCoords] = useState(null);
   const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const popoverRef = useRef(null);
 
   const anchor = from || to || maxDate || minDate;
   const anchorParts = anchor ? partsFromISO(anchor) : partsFromISO(isoFromParts(new Date().getFullYear(), new Date().getMonth(), 1));
   const [viewYear, setViewYear] = useState(anchorParts.y);
   const [viewMonth, setViewMonth] = useState(anchorParts.m);
 
+  function updateCoords() {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setCoords({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+  }
+
+  function toggleOpen() {
+    if (!open) updateCoords();
+    setOpen((v) => !v);
+  }
+
+  // The popover renders into a portal (outside the filter bar's DOM subtree,
+  // which clips overflow), positioned with fixed coords recomputed on
+  // scroll/resize so it tracks the trigger button.
+  useEffect(() => {
+    if (!open) return;
+    updateCoords();
+    window.addEventListener("resize", updateCoords);
+    window.addEventListener("scroll", updateCoords, true);
+    return () => {
+      window.removeEventListener("resize", updateCoords);
+      window.removeEventListener("scroll", updateCoords, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     function handlePointerDown(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+      if (containerRef.current && containerRef.current.contains(e.target)) return;
+      if (popoverRef.current && popoverRef.current.contains(e.target)) return;
+      setOpen(false);
     }
     function handleKeyDown(e) {
       if (e.key === "Escape") setOpen(false);
@@ -110,74 +141,80 @@ export default function DateRangePicker({ from, to, minDate, maxDate, onChange }
 
   const label = from ? (to ? `${formatDisplay(from)} – ${formatDisplay(to)}` : `${formatDisplay(from)} – ...`) : "Zeitraum wählen";
 
+  const popover = open && coords && (
+    <div
+      className="date-range-popover"
+      ref={popoverRef}
+      style={{ position: "fixed", top: coords.top, left: coords.left }}
+    >
+      <div className="date-range-nav">
+        <button type="button" onClick={() => goMonth(-1)} aria-label="Vorheriger Monat">
+          <ChevronLeftIcon />
+        </button>
+        <span className="date-range-month-label">
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </span>
+        <button type="button" onClick={() => goMonth(1)} aria-label="Nächster Monat">
+          <ChevronRightIcon />
+        </button>
+      </div>
+
+      <div className="date-range-weekdays">
+        {WEEKDAY_LABELS.map((w) => (
+          <span key={w}>{w}</span>
+        ))}
+      </div>
+
+      <div className="date-range-grid">
+        {cells.map((iso, i) => {
+          if (!iso) return <span key={i} className="date-cell date-cell-empty" aria-hidden="true" />;
+          const available = (!minDate || iso >= minDate) && (!maxDate || iso <= maxDate);
+          const isEdge = iso === from || iso === to;
+          const selectedLo = from && to ? minISO(from, to) : from;
+          const selectedHi = from && to ? maxISO(from, to) : null;
+          const inSelectedRange = selectedHi && iso > selectedLo && iso < selectedHi;
+          const inPreviewRange =
+            available && from && !to && hovered && iso > minISO(from, hovered) && iso < maxISO(from, hovered);
+          const classes = ["date-cell"];
+          if (!available) classes.push("date-cell-disabled");
+          if (isEdge) classes.push("date-cell-selected");
+          if (inSelectedRange || inPreviewRange) classes.push("date-cell-in-range");
+          if (iso === todayIso) classes.push("date-cell-today");
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={classes.join(" ")}
+              disabled={!available}
+              title={!available ? "Keine Logs an diesem Tag" : undefined}
+              onClick={() => handleDayClick(iso)}
+              onMouseEnter={() => setHovered(iso)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              {partsFromISO(iso).d}
+            </button>
+          );
+        })}
+      </div>
+
+      {(from || to) && (
+        <div className="date-range-footer">
+          <button type="button" className="date-range-clear" onClick={() => onChange({ from: "", to: "" })}>
+            Zurücksetzen
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="date-range-picker" ref={containerRef}>
-      <button type="button" className="date-range-trigger" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="date-range-trigger" ref={triggerRef} onClick={toggleOpen}>
         <CalendarIcon />
         <span>{label}</span>
       </button>
 
-      {open && (
-        <div className="date-range-popover">
-          <div className="date-range-nav">
-            <button type="button" onClick={() => goMonth(-1)} aria-label="Vorheriger Monat">
-              <ChevronLeftIcon />
-            </button>
-            <span className="date-range-month-label">
-              {MONTH_NAMES[viewMonth]} {viewYear}
-            </span>
-            <button type="button" onClick={() => goMonth(1)} aria-label="Nächster Monat">
-              <ChevronRightIcon />
-            </button>
-          </div>
-
-          <div className="date-range-weekdays">
-            {WEEKDAY_LABELS.map((w) => (
-              <span key={w}>{w}</span>
-            ))}
-          </div>
-
-          <div className="date-range-grid">
-            {cells.map((iso, i) => {
-              if (!iso) return <span key={i} className="date-cell date-cell-empty" aria-hidden="true" />;
-              const available = (!minDate || iso >= minDate) && (!maxDate || iso <= maxDate);
-              const isEdge = iso === from || iso === to;
-              const selectedLo = from && to ? minISO(from, to) : from;
-              const selectedHi = from && to ? maxISO(from, to) : null;
-              const inSelectedRange = selectedHi && iso > selectedLo && iso < selectedHi;
-              const inPreviewRange =
-                available && from && !to && hovered && iso > minISO(from, hovered) && iso < maxISO(from, hovered);
-              const classes = ["date-cell"];
-              if (!available) classes.push("date-cell-disabled");
-              if (isEdge) classes.push("date-cell-selected");
-              if (inSelectedRange || inPreviewRange) classes.push("date-cell-in-range");
-              if (iso === todayIso) classes.push("date-cell-today");
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  className={classes.join(" ")}
-                  disabled={!available}
-                  title={!available ? "Keine Logs an diesem Tag" : undefined}
-                  onClick={() => handleDayClick(iso)}
-                  onMouseEnter={() => setHovered(iso)}
-                  onMouseLeave={() => setHovered(null)}
-                >
-                  {partsFromISO(iso).d}
-                </button>
-              );
-            })}
-          </div>
-
-          {(from || to) && (
-            <div className="date-range-footer">
-              <button type="button" className="date-range-clear" onClick={() => onChange({ from: "", to: "" })}>
-                Zurücksetzen
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {popover && createPortal(popover, document.body)}
     </div>
   );
 }

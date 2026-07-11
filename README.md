@@ -41,8 +41,21 @@ Fortsetzung der vorherigen Nachricht behandelt (mehrzeilige Nachrichten).
 ```
 
 Installiert bei Bedarf die Abhängigkeiten und öffnet Backend und Frontend
-jeweils in einem eigenen PowerShell-Fenster mit Live-Ausgabe. Zum Beenden
-einfach die Fenster schließen.
+jeweils in einem eigenen PowerShell-Fenster mit Live-Ausgabe (Vite-Dev-Server,
+mit Hot-Reload). Zum Beenden einfach die Fenster schließen.
+
+### Produktions-Build (`deploy.ps1`)
+
+```powershell
+.\deploy.ps1
+```
+
+Installiert bei Bedarf die Abhängigkeiten, baut das Frontend als
+Produktions-Build (`client/dist`) und startet danach den Server — der liefert
+Frontend **und** Backend zusammen über einen einzigen Port aus
+(http://localhost:4000), kein Vite-Dev-Server nötig. Läuft im aktuellen
+Fenster im Vordergrund; zum Beenden Strg+C. Nach Frontend-Änderungen einfach
+erneut ausführen, um den Build zu aktualisieren.
 
 ### Manuell
 

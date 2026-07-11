@@ -299,10 +299,6 @@
 }
 
 /* Date range picker */
-.date-range-picker {
-  position: relative;
-}
-
 .date-range-trigger {
   display: inline-flex;
   align-items: center;
@@ -324,10 +320,7 @@
 }
 
 .date-range-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 60;
+  z-index: 90;
   width: 288px;
   background: var(--surface-1);
   border: 1px solid var(--border-soft);
