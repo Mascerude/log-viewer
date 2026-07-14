@@ -77,6 +77,29 @@ export function parseLogContent(content, fileName) {
 // mtimeMs+size keyed cache so files are only re-parsed after they change
 const cache = new Map();
 
+// Detects UTF-16LE, with or without a BOM. Many Windows trace loggers write
+// UTF-16LE without ever emitting the FF FE BOM, so we also sniff for the
+// "every other byte is 0x00" pattern that ASCII-range UTF-16LE text produces.
+function isUtf16LE(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) return true;
+  const sampleLength = Math.min(buffer.length, 200);
+  if (sampleLength < 4) return false;
+  let zeroInOddPos = 0;
+  for (let i = 1; i < sampleLength; i += 2) {
+    if (buffer[i] === 0x00) zeroInOddPos++;
+  }
+  return zeroInOddPos / (sampleLength / 2) > 0.7;
+}
+
+function readLogFile(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  if (isUtf16LE(buffer)) {
+    const hasBom = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
+    return buffer.toString("utf16le", hasBom ? 2 : 0);
+  }
+  return buffer.toString("utf-8");
+}
+
 export function parseLogFile(filePath, fileName) {
   const stat = fs.statSync(filePath);
   const cacheKey = filePath;
@@ -84,7 +107,7 @@ export function parseLogFile(filePath, fileName) {
   if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
     return cached.entries;
   }
-  const content = fs.readFileSync(filePath, "utf-8");
+  const content = readLogFile(filePath);
   const entries = parseLogContent(content, fileName);
   cache.set(cacheKey, { mtimeMs: stat.mtimeMs, size: stat.size, entries });
   return entries;

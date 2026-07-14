@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import LogEntryModal from "./LogEntryModal";
+import FormattedMessage from "../stackTrace";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -64,7 +65,9 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
                 <td className="col-pid">{e.pid}</td>
                 <td className="col-tid">{e.tid}</td>
                 <td className="col-message">
-                  <pre>{e.message}</pre>
+                  <pre>
+                    <FormattedMessage message={e.message} />
+                  </pre>
                 </td>
               </tr>
             ))}

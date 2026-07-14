@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
 import { CloseIcon, CopyIcon, CheckIcon } from "./icons";
+import FormattedMessage, { isStackTraceMessage } from "../stackTrace";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -111,7 +112,9 @@ export default function LogEntryModal({ entry, onClose }) {
 
           <div className="modal-field modal-field-wide">
             <span className="modal-label">Nachricht</span>
-            <pre className="modal-message">{entry.message}</pre>
+            <pre className={`modal-message${isStackTraceMessage(entry.message) ? " st-block" : ""}`}>
+              <FormattedMessage message={entry.message} />
+            </pre>
           </div>
         </div>
 

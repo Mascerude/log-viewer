@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon } from "./icons";
+import { HomeIcon, SettingsIcon, ChevronRightIcon } from "./icons";
 
 export default function Sidebar({ sources, files, view, onSelectHome, onSelectService, onSelectSettings }) {
   const servicesBySource = useMemo(() => {
@@ -16,6 +16,24 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
     }
     return result;
   }, [files]);
+
+  // Sources collapse by default; only the one containing the active service
+  // (if any) starts open, so navigating in never hides the current selection.
+  const [expanded, setExpanded] = useState(() => new Set(view.name === "service" ? [view.sourceId] : []));
+
+  useEffect(() => {
+    if (view.name !== "service") return;
+    setExpanded((prev) => (prev.has(view.sourceId) ? prev : new Set(prev).add(view.sourceId)));
+  }, [view]);
+
+  function toggleSource(id) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   return (
     <nav className="sidebar">
@@ -36,33 +54,43 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
       <div className="sidebar-sources">
         {sources.map((s) => {
           const services = servicesBySource.get(s.id) || [];
+          const isOpen = expanded.has(s.id);
           return (
             <div key={s.id} className="sidebar-source">
-              <div className="sidebar-source-header" title={s.path}>
+              <button
+                type="button"
+                className="sidebar-source-header"
+                title={s.path}
+                aria-expanded={isOpen}
+                onClick={() => toggleSource(s.id)}
+              >
                 <span
                   className={`status-dot ${s.exists ? "status-online" : "status-offline"}`}
                   aria-hidden="true"
                   title={s.exists ? "Ordner erreichbar" : "Ordner nicht gefunden"}
                 />
-                {s.name}
-              </div>
-              <ul className="sidebar-services">
-                {services.map((svc) => {
-                  const active = view.name === "service" && view.sourceId === s.id && view.service === svc;
-                  return (
-                    <li key={svc}>
-                      <button
-                        type="button"
-                        className={`sidebar-service${active ? " active" : ""}`}
-                        onClick={() => onSelectService(s.id, svc, s.name)}
-                      >
-                        {svc}
-                      </button>
-                    </li>
-                  );
-                })}
-                {services.length === 0 && <li className="sidebar-empty">Keine Daten</li>}
-              </ul>
+                <span className="sidebar-source-name">{s.name}</span>
+                <ChevronRightIcon className={`sidebar-source-chevron${isOpen ? " open" : ""}`} />
+              </button>
+              {isOpen && (
+                <ul className="sidebar-services">
+                  {services.map((svc) => {
+                    const active = view.name === "service" && view.sourceId === s.id && view.service === svc;
+                    return (
+                      <li key={svc}>
+                        <button
+                          type="button"
+                          className={`sidebar-service${active ? " active" : ""}`}
+                          onClick={() => onSelectService(s.id, svc, s.name)}
+                        >
+                          {svc}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {services.length === 0 && <li className="sidebar-empty">Keine Daten</li>}
+                </ul>
+              )}
             </div>
           );
         })}
