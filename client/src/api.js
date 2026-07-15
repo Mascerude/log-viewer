@@ -80,8 +80,8 @@ export function getFiles({ source } = {}) {
   return get("/files", { source });
 }
 
-export function getStats({ from, to, source, service } = {}) {
-  return get("/stats", { from, to, source, service });
+export function getStats({ from, to, source, service, level, search, pid, tid } = {}) {
+  return get("/stats", { from, to, source, service, level, search, pid, tid });
 }
 
 export function getLogs({ from, to, level, search, pid, tid, service, source, page, pageSize } = {}) {

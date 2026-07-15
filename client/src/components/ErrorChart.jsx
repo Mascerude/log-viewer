@@ -46,7 +46,7 @@ export default function ErrorChart({ stats, visibleLevels, onToggleLevel, onSele
         <div>
           <h2>Log-Einträge pro Tag</h2>
           <p className="chart-subtitle">
-            Nach Schweregrad, gefiltert nach Zeitraum
+            Nach Schweregrad, gefiltert wie die Tabelle unten
             {onSelectDayLevel && " · Klick auf einen Balken filtert Tag & Level"}
           </p>
         </div>

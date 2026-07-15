@@ -17,3 +17,7 @@ export const LEVEL_LETTERS = {
   Error: "E",
   Fatal: "F",
 };
+
+export const LEVEL_NAMES_BY_LETTER = Object.fromEntries(
+  Object.entries(LEVEL_LETTERS).map(([name, letter]) => [letter, name])
+);

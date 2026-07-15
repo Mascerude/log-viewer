@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLogs, getStats } from "../api";
-import { LEVEL_LETTERS } from "../levelColors";
+import { LEVEL_LETTERS, LEVEL_NAMES_BY_LETTER } from "../levelColors";
 import FilterBar from "./FilterBar";
 import ErrorChart from "./ErrorChart";
 import LogTable from "./LogTable";
@@ -45,7 +45,6 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [stats, setStats] = useState([]);
-  const [visibleLevels, setVisibleLevels] = useState(new Set(["Error"]));
   const [logs, setLogs] = useState({ entries: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -68,17 +67,33 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     return () => clearInterval(id);
   }, [refreshIntervalSeconds]);
 
+  const levelParam = useMemo(
+    () => (filters.levels.size === ALL_LETTERS.size ? undefined : Array.from(filters.levels).join(",")),
+    [filters.levels]
+  );
+  const visibleLevels = useMemo(
+    () => new Set(Array.from(filters.levels).map((letter) => LEVEL_NAMES_BY_LETTER[letter])),
+    [filters.levels]
+  );
+
   useEffect(() => {
-    getStats({ from: filters.from, to: filters.to, source: sourceId, service })
+    getStats({
+      from: filters.from,
+      to: filters.to,
+      source: sourceId,
+      service,
+      level: levelParam,
+      search: debouncedSearch,
+      pid: filters.pid,
+      tid: filters.tid,
+    })
       .then(setStats)
       .catch((err) => setError(err.message));
-  }, [filters.from, filters.to, sourceId, service, refreshTick]);
+  }, [filters.from, filters.to, levelParam, debouncedSearch, filters.pid, filters.tid, sourceId, service, refreshTick]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    const levelParam =
-      filters.levels.size === ALL_LETTERS.size ? undefined : Array.from(filters.levels).join(",");
     getLogs({
       from: filters.from,
       to: filters.to,
@@ -97,14 +112,15 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [filters.from, filters.to, filters.levels, sourceId, service, debouncedSearch, filters.pid, filters.tid, page, refreshTick]);
+  }, [filters.from, filters.to, levelParam, sourceId, service, debouncedSearch, filters.pid, filters.tid, page, refreshTick]);
 
   function toggleChartLevel(name) {
-    setVisibleLevels((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
+    const letter = LEVEL_LETTERS[name];
+    setFilters((prev) => {
+      const next = new Set(prev.levels);
+      if (next.has(letter)) next.delete(letter);
+      else next.add(letter);
+      return { ...prev, levels: next };
     });
   }
 

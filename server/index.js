@@ -187,6 +187,23 @@ function filterEntriesByDate(entries, from, to) {
   return entries.filter((e) => (!from || e.date >= from) && (!to || e.date <= to));
 }
 
+// Shared by /api/logs and /api/stats so the chart always reflects the same
+// level/search/pid/tid filters as the table.
+function applyEntryFilters(entries, { level, pid, tid, search } = {}) {
+  let result = entries;
+  if (level) {
+    const levels = String(level).split(",").filter(Boolean);
+    result = result.filter((e) => levels.includes(e.level));
+  }
+  if (pid) result = result.filter((e) => e.pid === pid);
+  if (tid) result = result.filter((e) => e.tid === tid);
+  if (search) {
+    const needle = String(search).toLowerCase();
+    result = result.filter((e) => e.message.toLowerCase().includes(needle));
+  }
+  return result;
+}
+
 function loadEntries(files) {
   const entries = [];
   for (const f of files) {
@@ -378,17 +395,7 @@ app.get("/api/logs", (req, res) => {
 
   const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);
   let entries = filterEntriesByDate(loadEntries(files), from, to);
-
-  if (level) {
-    const levels = String(level).split(",").filter(Boolean);
-    entries = entries.filter((e) => levels.includes(e.level));
-  }
-  if (pid) entries = entries.filter((e) => e.pid === pid);
-  if (tid) entries = entries.filter((e) => e.tid === tid);
-  if (search) {
-    const needle = String(search).toLowerCase();
-    entries = entries.filter((e) => e.message.toLowerCase().includes(needle));
-  }
+  entries = applyEntryFilters(entries, { level, pid, tid, search });
 
   entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
 
@@ -402,9 +409,10 @@ app.get("/api/logs", (req, res) => {
 });
 
 app.get("/api/stats", (req, res) => {
-  const { from, to, source, service } = req.query;
+  const { from, to, source, service, level, search, pid, tid } = req.query;
   const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);
-  const entries = filterEntriesByDate(loadEntries(files), from, to);
+  let entries = filterEntriesByDate(loadEntries(files), from, to);
+  entries = applyEntryFilters(entries, { level, pid, tid, search });
 
   const byDate = new Map();
   for (const f of files) {
