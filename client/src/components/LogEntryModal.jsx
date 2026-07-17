@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
-import { CloseIcon, CopyIcon, CheckIcon } from "./icons";
+import { CloseIcon, CopyIcon, CheckIcon, SearchIcon } from "./icons";
 import FormattedMessage, { isStackTraceMessage } from "../stackTrace";
+import MessageOccurrences from "./MessageOccurrences";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -24,6 +25,7 @@ function buildTicketText(entry) {
 
 export default function LogEntryModal({ entry, onClose }) {
   const [copied, setCopied] = useState(false);
+  const [showOccurrences, setShowOccurrences] = useState(false);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -35,6 +37,7 @@ export default function LogEntryModal({ entry, onClose }) {
 
   useEffect(() => {
     setCopied(false);
+    setShowOccurrences(false);
   }, [entry]);
 
   if (!entry) return null;
@@ -59,7 +62,12 @@ export default function LogEntryModal({ entry, onClose }) {
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-card" role="dialog" aria-modal="true" aria-label="Log-Eintrag Details">
+      <div
+        className={`modal-card${showOccurrences ? " modal-card-wide" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Log-Eintrag Details"
+      >
         <div className="modal-header">
           <h2>Log-Eintrag</h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Schließen">
@@ -116,6 +124,20 @@ export default function LogEntryModal({ entry, onClose }) {
               <FormattedMessage message={entry.message} />
             </pre>
           </div>
+
+          {!showOccurrences && (
+            <button
+              type="button"
+              className="occurrence-toggle"
+              onClick={() => setShowOccurrences(true)}
+            >
+              <SearchIcon /> Nachricht suchen
+            </button>
+          )}
+
+          {showOccurrences && (
+            <MessageOccurrences message={entry.message} sourceId={entry.sourceId} service={entry.service} />
+          )}
         </div>
 
         <div className="modal-actions">

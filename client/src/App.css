@@ -1622,3 +1622,129 @@
   transform: translateY(-1px);
   box-shadow: var(--shadow);
 }
+
+.modal-card-wide {
+  max-width: 900px;
+}
+
+.occurrence-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.occurrence-toggle:hover {
+  border-color: var(--accent-border);
+}
+
+.occurrence-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.occurrence-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.occurrence-toggle-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  flex: none;
+}
+
+.occurrence-scope {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.occurrence-scope-chip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.occurrence-scope-chip.active {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  font-weight: 600;
+}
+
+.occurrence-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.occurrence-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  border: 1px solid var(--border-soft);
+}
+
+.occurrence-stat-value {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.occurrence-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.occurrence-table {
+  font-size: 12.5px;
+}
+
+.occurrence-table tbody tr {
+  cursor: default;
+}
+
+.occurrence-message-cell {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.occurrence-pagination {
+  margin-top: 0;
+}

@@ -408,6 +408,62 @@ app.get("/api/logs", (req, res) => {
   res.json({ entries: pageEntries, total, page: pageNum, pageSize: size });
 });
 
+function countSince(entries, daysAgo) {
+  const sinceIso = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+  return entries.filter((e) => e.timestamp >= sinceIso).length;
+}
+
+// Collapses every run of digits to a single placeholder so messages that only
+// differ by an embedded id/count/date ("VS11 für 4001329,4002403 ...") are
+// recognized as the same underlying message template.
+function normalizeMessage(message) {
+  return message.replace(/\d+/g, "#");
+}
+
+// Finds every other occurrence of one entry's message, scoped to the same
+// service, the same source ("Quelle"), or globally across all sources — used
+// by the "Nachricht suchen" button in the entry detail modal. mode=exact
+// requires an identical message; mode=similar matches on the normalized
+// template (numbers ignored) so recurring messages with different ids/counts
+// are grouped together too.
+app.get("/api/message-occurrences", (req, res) => {
+  const { message, scope = "service", mode = "exact", sourceId, service, page = "1", pageSize = "50" } = req.query;
+  if (!message) return res.status(400).json({ error: "message ist erforderlich." });
+
+  let files;
+  if (scope === "global") {
+    files = listAllFiles();
+  } else if (scope === "source") {
+    if (!sourceId) return res.status(400).json({ error: "sourceId ist erforderlich für scope=source." });
+    files = listAllFiles(sourceId);
+  } else {
+    if (!sourceId || !service) {
+      return res.status(400).json({ error: "sourceId und service sind erforderlich für scope=service." });
+    }
+    files = listAllFiles(sourceId).filter((f) => f.service === service);
+  }
+
+  const normalizedTarget = mode === "similar" ? normalizeMessage(message) : null;
+  const entries = loadEntries(files).filter((e) =>
+    mode === "similar" ? normalizeMessage(e.message) === normalizedTarget : e.message === message
+  );
+  entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+
+  const counts = {
+    last24h: countSince(entries, 1),
+    last3d: countSince(entries, 3),
+    last7d: countSince(entries, 7),
+    total: entries.length,
+  };
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const size = Math.min(200, Math.max(1, parseInt(pageSize, 10) || 50));
+  const start = (pageNum - 1) * size;
+  const pageEntries = entries.slice(start, start + size);
+
+  res.json({ entries: pageEntries, counts, page: pageNum, pageSize: size });
+});
+
 app.get("/api/stats", (req, res) => {
   const { from, to, source, service, level, search, pid, tid } = req.query;
   const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);

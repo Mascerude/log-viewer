@@ -92,6 +92,10 @@ export function getSummary() {
   return get("/summary");
 }
 
+export function getMessageOccurrences({ message, scope, mode, sourceId, service, page, pageSize } = {}) {
+  return get("/message-occurrences", { message, scope, mode, sourceId, service, page, pageSize });
+}
+
 export function getSettings() {
   return get("/settings");
 }

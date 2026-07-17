@@ -122,3 +122,12 @@ export function FilterXIcon(props) {
     </svg>
   );
 }
+
+export function SearchIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M19.5 19.5 15 15" />
+    </svg>
+  );
+}
