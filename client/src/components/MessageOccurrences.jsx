@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getMessageOccurrences } from "../api";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
+import LogEntryModal from "./LogEntryModal";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -29,6 +30,7 @@ export default function MessageOccurrences({ message, sourceId, service }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedEntry, setSelectedEntry] = useState(null);
 
   useEffect(() => {
     setPage(1);
@@ -128,7 +130,13 @@ export default function MessageOccurrences({ message, sourceId, service }) {
               </tr>
             )}
             {entries.map((e) => (
-              <tr key={e.id} style={{ "--row-color": LEVEL_COLORS[e.levelName] }} className="log-row">
+              <tr
+                key={e.id}
+                style={{ "--row-color": LEVEL_COLORS[e.levelName] }}
+                className="log-row"
+                onDoubleClick={() => setSelectedEntry(e)}
+                title="Doppelklick für Details"
+              >
                 <td className="col-time">{formatTimestamp(e.timestamp)}</td>
                 <td className="col-level">
                   <span className="level-badge" style={{ "--badge-color": LEVEL_COLORS[e.levelName] }}>
@@ -164,6 +172,8 @@ export default function MessageOccurrences({ message, sourceId, service }) {
           </button>
         </div>
       )}
+
+      <LogEntryModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
     </div>
   );
 }

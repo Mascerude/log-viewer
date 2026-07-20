@@ -32,12 +32,12 @@ export function getSources() {
   return get("/sources");
 }
 
-export function addSource({ name, path }) {
-  return send("POST", "/sources", { name, path });
+export function addSource({ name, path, expiresAt }) {
+  return send("POST", "/sources", { name, path, expiresAt });
 }
 
-export function updateSource(id, { name, path }) {
-  return send("PUT", `/sources/${id}`, { name, path });
+export function updateSource(id, { name, path, expiresAt }) {
+  return send("PUT", `/sources/${id}`, { name, path, expiresAt });
 }
 
 export function deleteSource(id) {

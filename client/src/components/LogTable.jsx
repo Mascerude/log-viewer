@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import LogEntryModal from "./LogEntryModal";
+import CompareEntriesModal from "./CompareEntriesModal";
 import FormattedMessage from "../stackTrace";
+
+const MAX_COMPARE = 5;
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -14,6 +17,46 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const colCount = showSource ? 6 : 5;
   const [selectedEntry, setSelectedEntry] = useState(null);
+  const [selected, setSelected] = useState(() => new Map());
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  function toggleSelected(entry) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(entry.id)) {
+        next.delete(entry.id);
+      } else {
+        if (next.size >= MAX_COMPARE) return prev;
+        next.set(entry.id, entry);
+      }
+      return next;
+    });
+  }
+
+  function handleRowClick(e, entry) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    toggleSelected(entry);
+  }
+
+  // Enter opens the compare modal as long as at least two rows are marked
+  // and the user isn't typing in a filter field at the time.
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key !== "Enter" || selected.size < 2) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      e.preventDefault();
+      setCompareOpen(true);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selected]);
+
+  const compareEntries = useMemo(
+    () => Array.from(selected.values()).sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1)),
+    [selected]
+  );
 
   return (
     <div className="table-card">
@@ -25,6 +68,27 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
       </div>
 
       {error && <div className="table-error">{error}</div>}
+
+      {selected.size > 0 && (
+        <div className="compare-toolbar">
+          <span className="compare-toolbar-info">
+            {selected.size} von max. {MAX_COMPARE} markiert · Strg+Klick zum Markieren
+          </span>
+          <div className="compare-toolbar-actions">
+            <button type="button" className="compare-clear-button" onClick={() => setSelected(new Map())}>
+              Auswahl aufheben
+            </button>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={selected.size < 2}
+              onClick={() => setCompareOpen(true)}
+            >
+              Vergleichen
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="table-scroll">
         <table className="log-table">
@@ -50,9 +114,10 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
               <tr
                 key={e.id}
                 style={{ "--row-color": LEVEL_COLORS[e.levelName] }}
-                className="log-row"
+                className={`log-row${selected.has(e.id) ? " selected" : ""}`}
                 onDoubleClick={() => setSelectedEntry(e)}
-                title="Doppelklick für Details"
+                onClick={(evt) => handleRowClick(evt, e)}
+                title="Doppelklick: Details · Strg+Klick: zum Vergleich markieren"
               >
                 <td className="col-time">{formatTimestamp(e.timestamp)}</td>
                 <td className="col-level">
@@ -88,6 +153,7 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
       </div>
 
       <LogEntryModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+      {compareOpen && <CompareEntriesModal entries={compareEntries} onClose={() => setCompareOpen(false)} />}
     </div>
   );
 }

@@ -159,6 +159,27 @@
   white-space: nowrap;
 }
 
+.sidebar-source-expiry {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--critical);
+  opacity: 0.85;
+}
+
+.sidebar-section-label {
+  margin: 10px 12px 2px;
+  padding-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-top: 1px solid var(--border-soft);
+}
+
 .sidebar-source-chevron {
   flex: none;
   font-size: 12px;
@@ -649,6 +670,45 @@
   font-size: 14px;
 }
 
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+}
+
+.compare-toolbar-info {
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.compare-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compare-clear-button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.compare-clear-button:hover {
+  color: var(--text-h);
+}
+
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border-soft);
@@ -684,6 +744,11 @@
 
 .log-table tbody tr:hover {
   background: var(--code-bg);
+}
+
+.log-table tbody tr.selected,
+.log-table tbody tr.selected:hover {
+  background: var(--accent-bg);
 }
 
 .log-table tbody tr:last-child {
@@ -829,7 +894,7 @@
   box-shadow: var(--shadow);
   padding: 28px;
   width: 100%;
-  max-width: 860px;
+  max-width: 1100px;
 }
 
 .settings-card h2 {
@@ -985,6 +1050,66 @@
   font-size: 14px;
 }
 
+.expiry-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--critical) 14%, transparent);
+  color: var(--critical);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.source-expiry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.source-expiry-field input {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+/* Compact variant for the inline "Neue Quelle hinzufügen" row: label text
+   beside the input (not stacked above it), so the field stays the same
+   height as its siblings and never breaks the row onto its own line. */
+.source-expiry-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.source-expiry-inline input {
+  flex: none;
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
 .source-path {
   font-size: 12.5px;
   color: var(--muted);
@@ -1091,7 +1216,8 @@
 }
 
 .source-add-fields .path-input-group {
-  flex: 1 1 260px;
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
 .source-add-form {
@@ -1236,7 +1362,8 @@
 }
 
 .source-add-fields input {
-  flex: 1 1 180px;
+  flex: 1 1 150px;
+  min-width: 0;
   font: inherit;
   font-size: 14px;
   padding: 10px 12px;
@@ -1624,7 +1751,7 @@
 }
 
 .modal-card-wide {
-  max-width: 900px;
+  max-width: 1150px;
 }
 
 .occurrence-toggle {
@@ -1732,10 +1859,6 @@
   font-size: 12.5px;
 }
 
-.occurrence-table tbody tr {
-  cursor: default;
-}
-
 .occurrence-message-cell {
   max-width: 280px;
   overflow: hidden;
@@ -1743,6 +1866,39 @@
   white-space: nowrap;
   font-family: var(--mono);
   color: var(--text);
+}
+
+/* Compare entries modal: one full entry (same layout as the single-entry
+   detail modal) per side-by-side column. */
+.modal-grid-single {
+  grid-template-columns: 1fr;
+}
+
+.compare-columns {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.compare-column {
+  flex: 1 0 300px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+}
+
+.compare-column-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
 }
 
 .occurrence-pagination {

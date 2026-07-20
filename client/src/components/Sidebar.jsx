@@ -2,6 +2,57 @@ import { useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { HomeIcon, SettingsIcon, ChevronRightIcon } from "./icons";
 
+function formatExpiry(iso) {
+  const [, m, d] = iso.split("-");
+  return `bis ${d}.${m}.`;
+}
+
+function SourceSection({ source, services, isOpen, onToggle, view, onSelectService }) {
+  return (
+    <div className="sidebar-source">
+      <button
+        type="button"
+        className="sidebar-source-header"
+        title={source.path}
+        aria-expanded={isOpen}
+        onClick={onToggle}
+      >
+        <span
+          className={`status-dot ${source.exists ? "status-online" : "status-offline"}`}
+          aria-hidden="true"
+          title={source.exists ? "Ordner erreichbar" : "Ordner nicht gefunden"}
+        />
+        <span className="sidebar-source-name">{source.name}</span>
+        {source.expiresAt && (
+          <span className="sidebar-source-expiry" title="Läuft automatisch ab">
+            {formatExpiry(source.expiresAt)}
+          </span>
+        )}
+        <ChevronRightIcon className={`sidebar-source-chevron${isOpen ? " open" : ""}`} />
+      </button>
+      {isOpen && (
+        <ul className="sidebar-services">
+          {services.map((svc) => {
+            const active = view.name === "service" && view.sourceId === source.id && view.service === svc;
+            return (
+              <li key={svc}>
+                <button
+                  type="button"
+                  className={`sidebar-service${active ? " active" : ""}`}
+                  onClick={() => onSelectService(source.id, svc, source.name)}
+                >
+                  {svc}
+                </button>
+              </li>
+            );
+          })}
+          {services.length === 0 && <li className="sidebar-empty">Keine Daten</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar({ sources, files, view, onSelectHome, onSelectService, onSelectSettings }) {
   const servicesBySource = useMemo(() => {
     const map = new Map();
@@ -16,6 +67,9 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
     }
     return result;
   }, [files]);
+
+  const permanentSources = useMemo(() => sources.filter((s) => !s.expiresAt), [sources]);
+  const temporarySources = useMemo(() => sources.filter((s) => s.expiresAt), [sources]);
 
   // Sources collapse by default; only the one containing the active service
   // (if any) starts open, so navigating in never hides the current selection.
@@ -52,48 +106,34 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
       </button>
 
       <div className="sidebar-sources">
-        {sources.map((s) => {
-          const services = servicesBySource.get(s.id) || [];
-          const isOpen = expanded.has(s.id);
-          return (
-            <div key={s.id} className="sidebar-source">
-              <button
-                type="button"
-                className="sidebar-source-header"
-                title={s.path}
-                aria-expanded={isOpen}
-                onClick={() => toggleSource(s.id)}
-              >
-                <span
-                  className={`status-dot ${s.exists ? "status-online" : "status-offline"}`}
-                  aria-hidden="true"
-                  title={s.exists ? "Ordner erreichbar" : "Ordner nicht gefunden"}
-                />
-                <span className="sidebar-source-name">{s.name}</span>
-                <ChevronRightIcon className={`sidebar-source-chevron${isOpen ? " open" : ""}`} />
-              </button>
-              {isOpen && (
-                <ul className="sidebar-services">
-                  {services.map((svc) => {
-                    const active = view.name === "service" && view.sourceId === s.id && view.service === svc;
-                    return (
-                      <li key={svc}>
-                        <button
-                          type="button"
-                          className={`sidebar-service${active ? " active" : ""}`}
-                          onClick={() => onSelectService(s.id, svc, s.name)}
-                        >
-                          {svc}
-                        </button>
-                      </li>
-                    );
-                  })}
-                  {services.length === 0 && <li className="sidebar-empty">Keine Daten</li>}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+        {permanentSources.map((s) => (
+          <SourceSection
+            key={s.id}
+            source={s}
+            services={servicesBySource.get(s.id) || []}
+            isOpen={expanded.has(s.id)}
+            onToggle={() => toggleSource(s.id)}
+            view={view}
+            onSelectService={onSelectService}
+          />
+        ))}
+
+        {temporarySources.length > 0 && (
+          <>
+            <div className="sidebar-section-label">Temporäre Quellen</div>
+            {temporarySources.map((s) => (
+              <SourceSection
+                key={s.id}
+                source={s}
+                services={servicesBySource.get(s.id) || []}
+                isOpen={expanded.has(s.id)}
+                onToggle={() => toggleSource(s.id)}
+                view={view}
+                onSelectService={onSelectService}
+              />
+            ))}
+          </>
+        )}
       </div>
 
       <button

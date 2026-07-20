@@ -48,10 +48,16 @@ function PathInputWithBrowse({ value, onChange, id }) {
   );
 }
 
+function formatExpiryDate(iso) {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 function SourceRow({ source, fileCount, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(source.name);
   const [path, setPath] = useState(source.path);
+  const [expiresAt, setExpiresAt] = useState(source.expiresAt || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -60,7 +66,7 @@ function SourceRow({ source, fileCount, onChanged }) {
     setSaving(true);
     setError(null);
     try {
-      await updateSource(source.id, { name, path });
+      await updateSource(source.id, { name, path, expiresAt });
       setEditing(false);
       onChanged();
     } catch (err) {
@@ -81,6 +87,10 @@ function SourceRow({ source, fileCount, onChanged }) {
       <form className="source-row source-row-editing" onSubmit={handleSave}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
         <PathInputWithBrowse value={path} onChange={setPath} />
+        <label className="source-expiry-field" title="Optional. Macht die Quelle temporär, sie verschwindet danach automatisch.">
+          Ablaufdatum (optional)
+          <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+        </label>
         <div className="source-row-actions">
           <button type="submit" disabled={saving}>
             {saving ? "Speichert..." : "Speichern"}
@@ -97,7 +107,14 @@ function SourceRow({ source, fileCount, onChanged }) {
   return (
     <div className="source-row">
       <div className="source-info">
-        <span className="source-name">{source.name}</span>
+        <span className="source-name">
+          {source.name}
+          {source.expiresAt && (
+            <span className="expiry-badge" title="Läuft automatisch ab">
+              läuft ab {formatExpiryDate(source.expiresAt)}
+            </span>
+          )}
+        </span>
         <code className="source-path">{source.path}</code>
         <span className="source-meta">
           {source.exists ? (
@@ -440,6 +457,7 @@ export default function SettingsPage({
 }) {
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
 
@@ -448,9 +466,10 @@ export default function SettingsPage({
     setAdding(true);
     setError(null);
     try {
-      await addSource({ name, path });
+      await addSource({ name, path, expiresAt });
       setName("");
       setPath("");
+      setExpiresAt("");
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -486,6 +505,13 @@ export default function SettingsPage({
               required
             />
             <PathInputWithBrowse value={path} onChange={setPath} />
+            <label
+              className="source-expiry-inline"
+              title="Optional. Macht die Quelle temporär, sie verschwindet danach automatisch."
+            >
+              Ablaufdatum
+              <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+            </label>
             <button type="submit" disabled={adding}>
               {adding ? "Fügt hinzu..." : "Hinzufügen"}
             </button>

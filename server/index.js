@@ -72,10 +72,27 @@ for (const s of sources) delete s.host;
 let servers = loaded.servers || [];
 for (const s of servers) if (!Array.isArray(s.services)) s.services = [];
 let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SECONDS;
+pruneExpiredSources();
 saveConfig();
 
+// Re-check periodically so a temporary source disappears shortly after
+// midnight on its expiry date without requiring a server restart.
+setInterval(() => {
+  if (pruneExpiredSources()) saveConfig();
+}, MONITOR_INTERVAL_MS);
+
 function sourceInfo(s) {
-  return { id: s.id, name: s.name, path: s.path, exists: fs.existsSync(s.path) };
+  return { id: s.id, name: s.name, path: s.path, exists: fs.existsSync(s.path), expiresAt: s.expiresAt || null };
+}
+
+// Temporary sources (expiresAt set) quietly disappear once their date has
+// passed — treated exactly like a deleted source everywhere else, since
+// resolveSources()/listAllFiles() only ever see what's left in `sources`.
+function pruneExpiredSources() {
+  const today = new Date().toISOString().slice(0, 10);
+  const before = sources.length;
+  sources = sources.filter((s) => !s.expiresAt || s.expiresAt >= today);
+  return sources.length !== before;
 }
 
 // ---- Servers: standalone infrastructure monitoring, entirely independent of
@@ -226,11 +243,20 @@ app.get("/api/sources", (req, res) => {
 });
 
 app.post("/api/sources", (req, res) => {
-  const { name, path: rawPath } = req.body || {};
+  const { name, path: rawPath, expiresAt } = req.body || {};
   if (!name || !name.trim() || !rawPath || !rawPath.trim()) {
     return res.status(400).json({ error: "Name und Pfad sind erforderlich." });
   }
-  const source = { id: crypto.randomUUID(), name: name.trim(), path: path.resolve(rawPath.trim()) };
+  const today = new Date().toISOString().slice(0, 10);
+  if (expiresAt && expiresAt.trim() && expiresAt.trim() <= today) {
+    return res.status(400).json({ error: "Ablaufdatum muss in der Zukunft liegen." });
+  }
+  const source = {
+    id: crypto.randomUUID(),
+    name: name.trim(),
+    path: path.resolve(rawPath.trim()),
+    ...(expiresAt && expiresAt.trim() ? { expiresAt: expiresAt.trim() } : {}),
+  };
   sources.push(source);
   saveConfig();
   res.status(201).json(sourceInfo(source));
@@ -242,6 +268,18 @@ app.put("/api/sources/:id", (req, res) => {
   const body = req.body || {};
   if (body.name && body.name.trim()) source.name = body.name.trim();
   if (body.path && body.path.trim()) source.path = path.resolve(body.path.trim());
+  if ("expiresAt" in body) {
+    const trimmed = body.expiresAt && body.expiresAt.trim();
+    if (trimmed) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (trimmed <= today) {
+        return res.status(400).json({ error: "Ablaufdatum muss in der Zukunft liegen." });
+      }
+      source.expiresAt = trimmed;
+    } else {
+      delete source.expiresAt;
+    }
+  }
   saveConfig();
   res.json(sourceInfo(source));
 });

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { LEVEL_COLORS } from "../levelColors";
 import { CloseIcon, CopyIcon, CheckIcon, SearchIcon } from "./icons";
-import FormattedMessage, { isStackTraceMessage } from "../stackTrace";
 import MessageOccurrences from "./MessageOccurrences";
+import EntryFields from "./EntryFields";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -76,54 +75,7 @@ export default function LogEntryModal({ entry, onClose }) {
         </div>
 
         <div className="modal-body">
-          <div className="modal-grid">
-            <div className="modal-field">
-              <span className="modal-label">Zeitstempel</span>
-              <span className="modal-value modal-value-mono">{formatTimestamp(entry.timestamp)}</span>
-            </div>
-            <div className="modal-field">
-              <span className="modal-label">Level</span>
-              <span className="modal-value">
-                <span className="level-badge" style={{ "--badge-color": LEVEL_COLORS[entry.levelName] }}>
-                  <span className="level-dot" aria-hidden="true" />
-                  {entry.levelName}
-                </span>
-              </span>
-            </div>
-            {entry.sourceName && (
-              <div className="modal-field">
-                <span className="modal-label">Quelle</span>
-                <span className="modal-value">{entry.sourceName}</span>
-              </div>
-            )}
-            {entry.service && (
-              <div className="modal-field">
-                <span className="modal-label">Service</span>
-                <span className="modal-value">{entry.service}</span>
-              </div>
-            )}
-            <div className="modal-field">
-              <span className="modal-label">PID</span>
-              <span className="modal-value modal-value-mono">{entry.pid}</span>
-            </div>
-            <div className="modal-field">
-              <span className="modal-label">TID</span>
-              <span className="modal-value modal-value-mono">{entry.tid}</span>
-            </div>
-            {entry.file && (
-              <div className="modal-field modal-field-wide">
-                <span className="modal-label">Datei</span>
-                <span className="modal-value modal-value-mono">{entry.file}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="modal-field modal-field-wide">
-            <span className="modal-label">Nachricht</span>
-            <pre className={`modal-message${isStackTraceMessage(entry.message) ? " st-block" : ""}`}>
-              <FormattedMessage message={entry.message} />
-            </pre>
-          </div>
+          <EntryFields entry={entry} />
 
           {!showOccurrences && (
             <button
