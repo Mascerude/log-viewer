@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSources, getServers, getFiles, getSettings, getSummary } from "./api";
+import { getSources, getGroups, getServers, getFiles, getSettings, getSummary } from "./api";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
 import ServiceView from "./components/ServiceView";
@@ -9,6 +9,7 @@ import "./App.css";
 export default function App() {
   const [view, setView] = useState({ name: "home" });
   const [sources, setSources] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [servers, setServers] = useState([]);
   const [files, setFiles] = useState([]);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(30);
@@ -23,6 +24,7 @@ export default function App() {
   // fetch triggered right after a Settings change) resolving out of order and
   // letting a stale response clobber fresher state.
   const sourcesRequestId = useRef(0);
+  const groupsRequestId = useRef(0);
   const serversRequestId = useRef(0);
   const filesRequestId = useRef(0);
 
@@ -31,6 +33,15 @@ export default function App() {
     return getSources()
       .then((list) => {
         if (requestId === sourcesRequestId.current) setSources(list);
+      })
+      .catch((err) => setSummaryError(err.message));
+  }, []);
+
+  const refreshGroups = useCallback(() => {
+    const requestId = ++groupsRequestId.current;
+    return getGroups()
+      .then((list) => {
+        if (requestId === groupsRequestId.current) setGroups(list);
       })
       .catch((err) => setSummaryError(err.message));
   }, []);
@@ -57,15 +68,17 @@ export default function App() {
 
   useEffect(() => {
     refreshSources();
+    refreshGroups();
     refreshServers();
     refreshFiles();
     getSettings()
       .then((s) => setRefreshIntervalSeconds(s.refreshIntervalSeconds))
       .catch(() => {});
-  }, [refreshSources, refreshServers, refreshFiles]);
+  }, [refreshSources, refreshGroups, refreshServers, refreshFiles]);
 
   function handleSourcesChanged() {
     refreshSources();
+    refreshGroups();
     refreshFiles();
   }
 
@@ -84,9 +97,10 @@ export default function App() {
   useEffect(() => {
     if (refreshTick === 0) return;
     refreshSources();
+    refreshGroups();
     refreshServers();
     refreshFiles();
-  }, [refreshTick, refreshSources, refreshServers, refreshFiles]);
+  }, [refreshTick, refreshSources, refreshGroups, refreshServers, refreshFiles]);
 
   const refreshSummary = useCallback(() => {
     setSummaryLoading(true);
@@ -125,6 +139,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar
         sources={sources}
+        groups={groups}
         files={files}
         view={view}
         onSelectHome={goHome}
@@ -158,6 +173,7 @@ export default function App() {
           {view.name === "settings" && (
             <SettingsPage
               sources={sources}
+              groups={groups}
               fileCounts={fileCounts}
               servers={servers}
               refreshIntervalSeconds={refreshIntervalSeconds}

@@ -3,6 +3,9 @@ import { getMessageOccurrences } from "../api";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import LogEntryModal from "./LogEntryModal";
+import CompareEntriesModal from "./CompareEntriesModal";
+import CompareToolbar from "./CompareToolbar";
+import useCompareSelection from "../useCompareSelection";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -23,7 +26,11 @@ const MODES = [
 
 const PAGE_SIZE = 50;
 
-export default function MessageOccurrences({ message, sourceId, service }) {
+// `entry` is the log entry whose detail popup this search was opened from —
+// it's pre-selected for comparison, so ticking off matches from the results
+// below and hitting "Vergleichen" compares them against it directly.
+export default function MessageOccurrences({ entry }) {
+  const { message, sourceId, service } = entry;
   const [scope, setScope] = useState("service");
   const [mode, setMode] = useState("exact");
   const [page, setPage] = useState(1);
@@ -31,6 +38,9 @@ export default function MessageOccurrences({ message, sourceId, service }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
+  const { selected, handleRowClick, clear, compareOpen, setCompareOpen, compareEntries } = useCompareSelection([
+    entry,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -108,6 +118,8 @@ export default function MessageOccurrences({ message, sourceId, service }) {
         ))}
       </div>
 
+      <CompareToolbar count={selected.size} onClear={clear} onCompare={() => setCompareOpen(true)} />
+
       <div className="table-scroll">
         <table className="log-table occurrence-table">
           <thead>
@@ -133,9 +145,10 @@ export default function MessageOccurrences({ message, sourceId, service }) {
               <tr
                 key={e.id}
                 style={{ "--row-color": LEVEL_COLORS[e.levelName] }}
-                className="log-row"
+                className={`log-row${selected.has(e.id) ? " selected" : ""}`}
                 onDoubleClick={() => setSelectedEntry(e)}
-                title="Doppelklick für Details"
+                onClick={(evt) => handleRowClick(evt, e)}
+                title="Doppelklick: Details · Strg+Klick: zum Vergleich markieren"
               >
                 <td className="col-time">{formatTimestamp(e.timestamp)}</td>
                 <td className="col-level">
@@ -174,6 +187,7 @@ export default function MessageOccurrences({ message, sourceId, service }) {
       )}
 
       <LogEntryModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+      {compareOpen && <CompareEntriesModal entries={compareEntries} onClose={() => setCompareOpen(false)} />}
     </div>
   );
 }

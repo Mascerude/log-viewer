@@ -16,7 +16,7 @@ export default function CompareEntriesModal({ entries, onClose }) {
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
-        className="modal-card modal-card-wide"
+        className="modal-card modal-card-compare"
         role="dialog"
         aria-modal="true"
         aria-label="Log-Einträge vergleichen"

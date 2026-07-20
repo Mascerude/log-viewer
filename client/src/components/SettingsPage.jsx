@@ -4,6 +4,10 @@ import {
   deleteSource,
   updateSource,
   reorderSources,
+  addGroup,
+  updateGroup,
+  deleteGroup,
+  reorderGroups,
   addServer,
   deleteServer,
   updateServer,
@@ -75,11 +79,12 @@ function DraggableRow({ id, isDragging, onDragStart, onDragOver, onDragEnd, chil
   );
 }
 
-function SourceRow({ source, fileCount, onChanged }) {
+function SourceRow({ source, fileCount, groups, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(source.name);
   const [path, setPath] = useState(source.path);
   const [expiresAt, setExpiresAt] = useState(source.expiresAt || "");
+  const [groupId, setGroupId] = useState(source.groupId || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -88,7 +93,7 @@ function SourceRow({ source, fileCount, onChanged }) {
     setSaving(true);
     setError(null);
     try {
-      await updateSource(source.id, { name, path, expiresAt });
+      await updateSource(source.id, { name, path, expiresAt, groupId });
       setEditing(false);
       onChanged();
     } catch (err) {
@@ -104,6 +109,8 @@ function SourceRow({ source, fileCount, onChanged }) {
     onChanged();
   }
 
+  const groupName = groups.find((g) => g.id === source.groupId)?.name;
+
   if (editing) {
     return (
       <form className="source-row source-row-editing" onSubmit={handleSave}>
@@ -113,6 +120,19 @@ function SourceRow({ source, fileCount, onChanged }) {
           Ablaufdatum (optional)
           <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
         </label>
+        {groups.length > 0 && (
+          <label className="source-expiry-field">
+            Gruppe (optional)
+            <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+              <option value="">Keine Gruppe</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="source-row-actions">
           <button type="submit" disabled={saving}>
             {saving ? "Speichert..." : "Speichern"}
@@ -131,6 +151,7 @@ function SourceRow({ source, fileCount, onChanged }) {
       <div className="source-info">
         <span className="source-name">
           {source.name}
+          {groupName && <span className="group-badge">{groupName}</span>}
           {source.expiresAt && (
             <span className="expiry-badge" title="Läuft automatisch ab">
               läuft ab {formatExpiryDate(source.expiresAt)}
@@ -154,6 +175,157 @@ function SourceRow({ source, fileCount, onChanged }) {
           Entfernen
         </button>
       </div>
+    </div>
+  );
+}
+
+function GroupRow({ group, sourceCount, onChanged }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(group.name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await updateGroup(group.id, { name });
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !window.confirm(
+        `Gruppe "${group.name}" wirklich entfernen? Enthaltene Quellen werden nicht gelöscht, nur aus der Gruppe entfernt.`
+      )
+    )
+      return;
+    await deleteGroup(group.id);
+    onChanged();
+  }
+
+  if (editing) {
+    return (
+      <form className="source-row source-row-editing" onSubmit={handleSave}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
+        <div className="source-row-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? "Speichert..." : "Speichern"}
+          </button>
+          <button type="button" className="secondary" onClick={() => setEditing(false)}>
+            Abbrechen
+          </button>
+        </div>
+        {error && <div className="settings-result settings-error">{error}</div>}
+      </form>
+    );
+  }
+
+  return (
+    <div className="source-row">
+      <div className="source-info">
+        <span className="source-name">{group.name}</span>
+        <span className="source-meta">
+          {sourceCount} Quelle{sourceCount === 1 ? "" : "n"}
+        </span>
+      </div>
+      <div className="source-row-actions">
+        <button type="button" className="secondary" onClick={() => setEditing(true)}>
+          Bearbeiten
+        </button>
+        <button type="button" className="danger" onClick={handleDelete}>
+          Entfernen
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GroupsCard({ groups, sources, onChanged }) {
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState(null);
+
+  const {
+    orderedItems: orderedGroups,
+    draggingId,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+  } = useReorderableList(groups, (order) => {
+    reorderGroups(order)
+      .catch((err) => console.error("Gruppen-Reihenfolge konnte nicht gespeichert werden:", err))
+      .finally(onChanged);
+  });
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    setAdding(true);
+    setError(null);
+    try {
+      await addGroup({ name });
+      setName("");
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Gruppen</h2>
+      <p className="chart-subtitle">
+        Fasse Log-Quellen zu aufklappbaren Gruppen in der Navigation links zusammen. Eine Quelle
+        lässt sich beim Bearbeiten einer Gruppe zuordnen.
+      </p>
+
+      <div className="source-list">
+        {groups.length === 0 && <p className="chart-subtitle">Noch keine Gruppe angelegt.</p>}
+        {orderedGroups.map((g) => (
+          <DraggableRow
+            key={g.id}
+            id={g.id}
+            isDragging={draggingId === g.id}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <GroupRow
+              group={g}
+              sourceCount={sources.filter((s) => s.groupId === g.id).length}
+              onChanged={onChanged}
+            />
+          </DraggableRow>
+        ))}
+      </div>
+
+      <form onSubmit={handleAdd} className="settings-form source-add-form">
+        <label htmlFor="group-name">Neue Gruppe hinzufügen</label>
+        <div className="source-add-fields">
+          <input
+            id="group-name"
+            type="text"
+            placeholder="Name, z.B. Produktion"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={adding}>
+            {adding ? "Fügt hinzu..." : "Hinzufügen"}
+          </button>
+        </div>
+      </form>
+
+      {error && <div className="settings-result settings-error">{error}</div>}
     </div>
   );
 }
@@ -490,6 +662,7 @@ function RefreshIntervalCard({ refreshIntervalSeconds, onChanged }) {
 
 export default function SettingsPage({
   sources,
+  groups,
   fileCounts,
   servers,
   refreshIntervalSeconds,
@@ -501,6 +674,7 @@ export default function SettingsPage({
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
 
@@ -521,10 +695,11 @@ export default function SettingsPage({
     setAdding(true);
     setError(null);
     try {
-      await addSource({ name, path, expiresAt });
+      await addSource({ name, path, expiresAt, groupId });
       setName("");
       setPath("");
       setExpiresAt("");
+      setGroupId("");
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -552,7 +727,7 @@ export default function SettingsPage({
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <SourceRow source={s} fileCount={fileCounts[s.id]} onChanged={onChanged} />
+              <SourceRow source={s} fileCount={fileCounts[s.id]} groups={groups} onChanged={onChanged} />
             </DraggableRow>
           ))}
         </div>
@@ -576,6 +751,19 @@ export default function SettingsPage({
               Ablaufdatum
               <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
             </label>
+            {groups.length > 0 && (
+              <label className="source-expiry-inline">
+                Gruppe
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                  <option value="">Keine</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button type="submit" disabled={adding}>
               {adding ? "Fügt hinzu..." : "Hinzufügen"}
             </button>
@@ -584,6 +772,8 @@ export default function SettingsPage({
 
         {error && <div className="settings-result settings-error">{error}</div>}
       </div>
+
+      <GroupsCard groups={groups} sources={sources} onChanged={onChanged} />
 
       <ServersCard servers={servers} onChanged={onServersChanged} />
 

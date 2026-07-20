@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon, ChevronRightIcon } from "./icons";
+import { HomeIcon, SettingsIcon, ChevronRightIcon, FolderIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
@@ -53,7 +53,35 @@ function SourceSection({ source, services, isOpen, onToggle, view, onSelectServi
   );
 }
 
-export default function Sidebar({ sources, files, view, onSelectHome, onSelectService, onSelectSettings }) {
+function GroupSection({ group, groupSources, servicesBySource, isOpen, onToggle, expandedSources, onToggleSource, view, onSelectService }) {
+  return (
+    <div className="sidebar-group">
+      <button type="button" className="sidebar-group-header" aria-expanded={isOpen} onClick={onToggle}>
+        <FolderIcon className="sidebar-group-icon" />
+        <span className="sidebar-group-name">{group.name}</span>
+        <ChevronRightIcon className={`sidebar-source-chevron${isOpen ? " open" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="sidebar-group-sources">
+          {groupSources.map((s) => (
+            <SourceSection
+              key={s.id}
+              source={s}
+              services={servicesBySource.get(s.id) || []}
+              isOpen={expandedSources.has(s.id)}
+              onToggle={() => onToggleSource(s.id)}
+              view={view}
+              onSelectService={onSelectService}
+            />
+          ))}
+          {groupSources.length === 0 && <div className="sidebar-empty sidebar-group-empty">Keine Quellen</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Sidebar({ sources, groups, files, view, onSelectHome, onSelectService, onSelectSettings }) {
   const servicesBySource = useMemo(() => {
     const map = new Map();
     for (const f of files) {
@@ -68,20 +96,48 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
     return result;
   }, [files]);
 
-  const permanentSources = useMemo(() => sources.filter((s) => !s.expiresAt), [sources]);
-  const temporarySources = useMemo(() => sources.filter((s) => s.expiresAt), [sources]);
+  const groupedSources = useMemo(() => {
+    const map = new Map();
+    for (const s of sources) {
+      if (!s.groupId) continue;
+      if (!map.has(s.groupId)) map.set(s.groupId, []);
+      map.get(s.groupId).push(s);
+    }
+    return map;
+  }, [sources]);
 
-  // Sources collapse by default; only the one containing the active service
-  // (if any) starts open, so navigating in never hides the current selection.
+  const ungroupedSources = useMemo(() => sources.filter((s) => !s.groupId), [sources]);
+  const permanentSources = useMemo(() => ungroupedSources.filter((s) => !s.expiresAt), [ungroupedSources]);
+  const temporarySources = useMemo(() => ungroupedSources.filter((s) => s.expiresAt), [ungroupedSources]);
+
+  // Sources (and groups) collapse by default; only the one containing the
+  // active service (if any) starts open, so navigating in never hides the
+  // current selection.
   const [expanded, setExpanded] = useState(() => new Set(view.name === "service" ? [view.sourceId] : []));
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
 
   useEffect(() => {
     if (view.name !== "service") return;
     setExpanded((prev) => (prev.has(view.sourceId) ? prev : new Set(prev).add(view.sourceId)));
-  }, [view]);
+    const activeSource = sources.find((s) => s.id === view.sourceId);
+    if (activeSource?.groupId) {
+      setExpandedGroups((prev) =>
+        prev.has(activeSource.groupId) ? prev : new Set(prev).add(activeSource.groupId)
+      );
+    }
+  }, [view, sources]);
 
   function toggleSource(id) {
     setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleGroup(id) {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -106,6 +162,21 @@ export default function Sidebar({ sources, files, view, onSelectHome, onSelectSe
       </button>
 
       <div className="sidebar-sources">
+        {groups.map((g) => (
+          <GroupSection
+            key={g.id}
+            group={g}
+            groupSources={groupedSources.get(g.id) || []}
+            servicesBySource={servicesBySource}
+            isOpen={expandedGroups.has(g.id)}
+            onToggle={() => toggleGroup(g.id)}
+            expandedSources={expanded}
+            onToggleSource={toggleSource}
+            view={view}
+            onSelectService={onSelectService}
+          />
+        ))}
+
         {permanentSources.map((s) => (
           <SourceSection
             key={s.id}

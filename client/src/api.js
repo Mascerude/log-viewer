@@ -32,12 +32,12 @@ export function getSources() {
   return get("/sources");
 }
 
-export function addSource({ name, path, expiresAt }) {
-  return send("POST", "/sources", { name, path, expiresAt });
+export function addSource({ name, path, expiresAt, groupId }) {
+  return send("POST", "/sources", { name, path, expiresAt, groupId });
 }
 
-export function updateSource(id, { name, path, expiresAt }) {
-  return send("PUT", `/sources/${id}`, { name, path, expiresAt });
+export function updateSource(id, { name, path, expiresAt, groupId }) {
+  return send("PUT", `/sources/${id}`, { name, path, expiresAt, groupId });
 }
 
 export function deleteSource(id) {
@@ -46,6 +46,26 @@ export function deleteSource(id) {
 
 export function reorderSources(order) {
   return send("PUT", "/sources/reorder", { order });
+}
+
+export function getGroups() {
+  return get("/groups");
+}
+
+export function addGroup({ name }) {
+  return send("POST", "/groups", { name });
+}
+
+export function updateGroup(id, { name }) {
+  return send("PUT", `/groups/${id}`, { name });
+}
+
+export function deleteGroup(id) {
+  return send("DELETE", `/groups/${id}`);
+}
+
+export function reorderGroups(order) {
+  return send("PUT", "/groups/reorder", { order });
 }
 
 export function browseFolder() {

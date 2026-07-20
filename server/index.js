@@ -40,6 +40,7 @@ function loadConfig() {
     }
     return {
       sources: loadedSources,
+      groups: Array.isArray(parsed.groups) ? parsed.groups : null,
       servers: Array.isArray(parsed.servers) ? parsed.servers : null,
       refreshIntervalSeconds:
         typeof parsed.refreshIntervalSeconds === "number" ? parsed.refreshIntervalSeconds : null,
@@ -47,13 +48,13 @@ function loadConfig() {
   } catch {
     // no config.json yet, or unreadable — fall through to defaults
   }
-  return { sources: null, servers: null, refreshIntervalSeconds: null };
+  return { sources: null, groups: null, servers: null, refreshIntervalSeconds: null };
 }
 
 function saveConfig() {
   fs.writeFileSync(
     CONFIG_PATH,
-    JSON.stringify({ sources, servers, refreshIntervalSeconds }, null, 2),
+    JSON.stringify({ sources, groups, servers, refreshIntervalSeconds }, null, 2),
     "utf-8"
   );
 }
@@ -69,6 +70,7 @@ let sources =
   ];
 // Drop any leftover ping config from a previous version — sources are just name+path now.
 for (const s of sources) delete s.host;
+let groups = loaded.groups || [];
 let servers = loaded.servers || [];
 for (const s of servers) if (!Array.isArray(s.services)) s.services = [];
 let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SECONDS;
@@ -82,7 +84,18 @@ setInterval(() => {
 }, MONITOR_INTERVAL_MS);
 
 function sourceInfo(s) {
-  return { id: s.id, name: s.name, path: s.path, exists: fs.existsSync(s.path), expiresAt: s.expiresAt || null };
+  return {
+    id: s.id,
+    name: s.name,
+    path: s.path,
+    exists: fs.existsSync(s.path),
+    expiresAt: s.expiresAt || null,
+    groupId: s.groupId || null,
+  };
+}
+
+function groupInfo(g) {
+  return { id: g.id, name: g.name };
 }
 
 // Reorders `list` to match `order` (an array of ids). Ids not present in the
@@ -264,7 +277,7 @@ app.get("/api/sources", (req, res) => {
 });
 
 app.post("/api/sources", (req, res) => {
-  const { name, path: rawPath, expiresAt } = req.body || {};
+  const { name, path: rawPath, expiresAt, groupId } = req.body || {};
   if (!name || !name.trim() || !rawPath || !rawPath.trim()) {
     return res.status(400).json({ error: "Name und Pfad sind erforderlich." });
   }
@@ -272,11 +285,15 @@ app.post("/api/sources", (req, res) => {
   if (expiresAt && expiresAt.trim() && expiresAt.trim() <= today) {
     return res.status(400).json({ error: "Ablaufdatum muss in der Zukunft liegen." });
   }
+  if (groupId && !groups.some((g) => g.id === groupId)) {
+    return res.status(400).json({ error: "Gruppe nicht gefunden." });
+  }
   const source = {
     id: crypto.randomUUID(),
     name: name.trim(),
     path: path.resolve(rawPath.trim()),
     ...(expiresAt && expiresAt.trim() ? { expiresAt: expiresAt.trim() } : {}),
+    ...(groupId ? { groupId } : {}),
   };
   sources.push(source);
   saveConfig();
@@ -310,6 +327,16 @@ app.put("/api/sources/:id", (req, res) => {
       delete source.expiresAt;
     }
   }
+  if ("groupId" in body) {
+    if (body.groupId) {
+      if (!groups.some((g) => g.id === body.groupId)) {
+        return res.status(400).json({ error: "Gruppe nicht gefunden." });
+      }
+      source.groupId = body.groupId;
+    } else {
+      delete source.groupId;
+    }
+  }
   saveConfig();
   res.json(sourceInfo(source));
 });
@@ -318,6 +345,49 @@ app.delete("/api/sources/:id", (req, res) => {
   const idx = sources.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Quelle nicht gefunden." });
   sources.splice(idx, 1);
+  saveConfig();
+  res.status(204).end();
+});
+
+// ---- Groups (collapsible folders for sources in the sidebar) ----
+
+app.get("/api/groups", (req, res) => {
+  res.json(groups.map(groupInfo));
+});
+
+app.post("/api/groups", (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
+  const group = { id: crypto.randomUUID(), name: name.trim() };
+  groups.push(group);
+  saveConfig();
+  res.status(201).json(groupInfo(group));
+});
+
+// Registered before /api/groups/:id so "reorder" isn't swallowed as an id.
+app.put("/api/groups/reorder", (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) return res.status(400).json({ error: "order muss ein Array von IDs sein." });
+  groups = reorderById(groups, order);
+  saveConfig();
+  res.json(groups.map(groupInfo));
+});
+
+app.put("/api/groups/:id", (req, res) => {
+  const group = groups.find((g) => g.id === req.params.id);
+  if (!group) return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  const { name } = req.body || {};
+  if (name && name.trim()) group.name = name.trim();
+  saveConfig();
+  res.json(groupInfo(group));
+});
+
+app.delete("/api/groups/:id", (req, res) => {
+  const idx = groups.findIndex((g) => g.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Gruppe nicht gefunden." });
+  groups.splice(idx, 1);
+  // Sources in the deleted group aren't removed, just ungrouped.
+  for (const s of sources) if (s.groupId === req.params.id) delete s.groupId;
   saveConfig();
   res.status(204).end();
 });

@@ -141,7 +141,7 @@ export default function LogEntryModal({ entry, onClose }) {
           )}
 
           {showOccurrences && (
-            <MessageOccurrences message={entry.message} sourceId={entry.sourceId} service={entry.service} />
+            <MessageOccurrences entry={entry} />
           )}
         </div>
 

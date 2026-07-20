@@ -78,6 +78,14 @@ export function ChevronDownIcon(props) {
   );
 }
 
+export function FolderIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.5 6.5a1 1 0 0 1 1-1H9l2 2h8.5a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z" />
+    </svg>
+  );
+}
+
 export function AlertIcon(props) {
   return (
     <svg {...base} {...props}>

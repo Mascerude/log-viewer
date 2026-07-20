@@ -191,6 +191,56 @@
   transform: rotate(90deg);
 }
 
+.sidebar-group {
+  margin-bottom: 2px;
+}
+
+.sidebar-group-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-h);
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-group-header:hover {
+  background: var(--code-bg);
+}
+
+.sidebar-group-icon {
+  flex: none;
+  font-size: 14px;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.sidebar-group-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-group-sources {
+  margin-left: 14px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.sidebar-group-empty {
+  padding: 4px 12px 6px 26px;
+}
+
 .sidebar-services {
   list-style: none;
   margin: 0;
@@ -1094,6 +1144,17 @@
   white-space: nowrap;
 }
 
+.group-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .source-expiry-field {
   display: flex;
   flex-direction: column;
@@ -1105,7 +1166,8 @@
   color: var(--muted);
 }
 
-.source-expiry-field input {
+.source-expiry-field input,
+.source-expiry-field select {
   font: inherit;
   font-size: 14px;
   font-weight: 400;
@@ -1132,7 +1194,8 @@
   white-space: nowrap;
 }
 
-.source-expiry-inline input {
+.source-expiry-inline input,
+.source-expiry-inline select {
   flex: none;
   font: inherit;
   font-size: 14px;
@@ -1856,6 +1919,13 @@
   max-width: 1150px;
 }
 
+/* The compare modal wants to show every selected entry side by side without
+   nested scrollbars, so it gets much more room than a normal dialog. */
+.modal-card-compare {
+  max-width: min(1800px, 96vw);
+  max-height: 92vh;
+}
+
 .occurrence-toggle {
   display: inline-flex;
   align-items: center;
@@ -1984,8 +2054,8 @@
 }
 
 .compare-column {
-  flex: 1 0 300px;
-  min-width: 300px;
+  flex: 1 0 320px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1993,6 +2063,13 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: var(--code-bg);
+}
+
+/* Let messages render at full length instead of scrolling in their own tiny
+   box — if the comparison as a whole doesn't fit, .modal-body scrolls once
+   instead of every column scrolling independently. */
+.compare-column .modal-message {
+  max-height: none;
 }
 
 .compare-column-header {
