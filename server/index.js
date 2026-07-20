@@ -85,6 +85,27 @@ function sourceInfo(s) {
   return { id: s.id, name: s.name, path: s.path, exists: fs.existsSync(s.path), expiresAt: s.expiresAt || null };
 }
 
+// Reorders `list` to match `order` (an array of ids). Ids not present in the
+// list are ignored; items whose id isn't in `order` keep their relative
+// position, appended after the reordered ones. Used for drag & drop reorder
+// of sources/servers in Settings.
+function reorderById(list, order) {
+  const byId = new Map(list.map((item) => [item.id, item]));
+  const seen = new Set();
+  const reordered = [];
+  for (const id of order) {
+    const item = byId.get(id);
+    if (item && !seen.has(id)) {
+      reordered.push(item);
+      seen.add(id);
+    }
+  }
+  for (const item of list) {
+    if (!seen.has(item.id)) reordered.push(item);
+  }
+  return reordered;
+}
+
 // Temporary sources (expiresAt set) quietly disappear once their date has
 // passed — treated exactly like a deleted source everywhere else, since
 // resolveSources()/listAllFiles() only ever see what's left in `sources`.
@@ -262,6 +283,15 @@ app.post("/api/sources", (req, res) => {
   res.status(201).json(sourceInfo(source));
 });
 
+// Registered before /api/sources/:id so "reorder" isn't swallowed as an id.
+app.put("/api/sources/reorder", (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) return res.status(400).json({ error: "order muss ein Array von IDs sein." });
+  sources = reorderById(sources, order);
+  saveConfig();
+  res.json(sources.map(sourceInfo));
+});
+
 app.put("/api/sources/:id", (req, res) => {
   const source = sources.find((s) => s.id === req.params.id);
   if (!source) return res.status(404).json({ error: "Quelle nicht gefunden." });
@@ -330,6 +360,15 @@ app.post("/api/servers", async (req, res) => {
   saveConfig();
   await checkServerOnline(server);
   res.status(201).json(serverInfo(server));
+});
+
+// Registered before /api/servers/:id so "reorder" isn't swallowed as an id.
+app.put("/api/servers/reorder", (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) return res.status(400).json({ error: "order muss ein Array von IDs sein." });
+  servers = reorderById(servers, order);
+  saveConfig();
+  res.json(servers.map(serverInfo));
 });
 
 app.put("/api/servers/:id", async (req, res) => {

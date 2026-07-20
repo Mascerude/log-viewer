@@ -3,15 +3,19 @@ import {
   addSource,
   deleteSource,
   updateSource,
+  reorderSources,
   addServer,
   deleteServer,
   updateServer,
+  reorderServers,
   addService,
   updateService,
   deleteService,
   updateSettings,
   browseFolder,
 } from "../api";
+import useReorderableList from "../useReorderableList";
+import { GripIcon } from "./icons";
 
 function PathInputWithBrowse({ value, onChange, id }) {
   const [browsing, setBrowsing] = useState(false);
@@ -51,6 +55,24 @@ function PathInputWithBrowse({ value, onChange, id }) {
 function formatExpiryDate(iso) {
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y}`;
+}
+
+// Wraps a row with a drag handle for reordering (see useReorderableList).
+function DraggableRow({ id, isDragging, onDragStart, onDragOver, onDragEnd, children }) {
+  return (
+    <div className={`draggable-row${isDragging ? " dragging" : ""}`} onDragOver={(e) => onDragOver(id, e)}>
+      <span
+        className="drag-handle"
+        draggable
+        onDragStart={() => onDragStart(id)}
+        onDragEnd={onDragEnd}
+        title="Ziehen zum Umsortieren"
+      >
+        <GripIcon />
+      </span>
+      {children}
+    </div>
+  );
 }
 
 function SourceRow({ source, fileCount, onChanged }) {
@@ -335,6 +357,18 @@ function ServersCard({ servers, onChanged }) {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
 
+  const {
+    orderedItems: orderedServers,
+    draggingId,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+  } = useReorderableList(servers, (order) => {
+    reorderServers(order)
+      .catch((err) => console.error("Server-Reihenfolge konnte nicht gespeichert werden:", err))
+      .finally(onChanged);
+  });
+
   async function handleAdd(e) {
     e.preventDefault();
     setAdding(true);
@@ -363,8 +397,17 @@ function ServersCard({ servers, onChanged }) {
 
       <div className="source-list">
         {servers.length === 0 && <p className="chart-subtitle">Noch kein Server konfiguriert.</p>}
-        {servers.map((s) => (
-          <ServerRow key={s.id} server={s} onChanged={onChanged} />
+        {orderedServers.map((s) => (
+          <DraggableRow
+            key={s.id}
+            id={s.id}
+            isDragging={draggingId === s.id}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <ServerRow server={s} onChanged={onChanged} />
+          </DraggableRow>
         ))}
       </div>
 
@@ -461,6 +504,18 @@ export default function SettingsPage({
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
 
+  const {
+    orderedItems: orderedSources,
+    draggingId,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+  } = useReorderableList(sources, (order) => {
+    reorderSources(order)
+      .catch((err) => console.error("Quellen-Reihenfolge konnte nicht gespeichert werden:", err))
+      .finally(onChanged);
+  });
+
   async function handleAdd(e) {
     e.preventDefault();
     setAdding(true);
@@ -488,8 +543,17 @@ export default function SettingsPage({
 
         <div className="source-list">
           {sources.length === 0 && <p className="chart-subtitle">Noch keine Quelle konfiguriert.</p>}
-          {sources.map((s) => (
-            <SourceRow key={s.id} source={s} fileCount={fileCounts[s.id]} onChanged={onChanged} />
+          {orderedSources.map((s) => (
+            <DraggableRow
+              key={s.id}
+              id={s.id}
+              isDragging={draggingId === s.id}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <SourceRow source={s} fileCount={fileCounts[s.id]} onChanged={onChanged} />
+            </DraggableRow>
           ))}
         </div>
 

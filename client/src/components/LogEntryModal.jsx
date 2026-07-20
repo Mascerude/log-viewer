@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { CloseIcon, CopyIcon, CheckIcon, SearchIcon } from "./icons";
+import { useEffect, useRef, useState } from "react";
+import { CloseIcon, CopyIcon, CheckIcon, SearchIcon, ChevronDownIcon } from "./icons";
 import MessageOccurrences from "./MessageOccurrences";
 import EntryFields from "./EntryFields";
+import { copyPlainText, copyRichText } from "../clipboard";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -9,21 +10,92 @@ function formatTimestamp(iso) {
   return `${d}.${m}.${y} ${timePart}`;
 }
 
-function buildTicketText(entry) {
-  const lines = [
-    `Zeitstempel: ${formatTimestamp(entry.timestamp)}`,
-    `Level: ${entry.levelName}`,
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function ticketFields(entry) {
+  const fields = [
+    ["Zeitstempel", formatTimestamp(entry.timestamp)],
+    ["Level", entry.levelName],
   ];
-  if (entry.sourceName) lines.push(`Quelle: ${entry.sourceName}`);
-  if (entry.service) lines.push(`Service: ${entry.service}`);
-  lines.push(`PID: ${entry.pid}`, `TID: ${entry.tid}`);
-  if (entry.file) lines.push(`Datei: ${entry.file}`);
+  if (entry.sourceName) fields.push(["Quelle", entry.sourceName]);
+  if (entry.service) fields.push(["Service", entry.service]);
+  fields.push(["PID", entry.pid], ["TID", entry.tid]);
+  if (entry.file) fields.push(["Datei", entry.file]);
+  return fields;
+}
+
+function buildTicketText(entry) {
+  const lines = ticketFields(entry).map(([label, value]) => `${label}: ${value}`);
   lines.push("", "Nachricht:", entry.message);
   return lines.join("\n");
 }
 
+// Self-contained HTML (inline styles only — the target editor won't load our
+// CSS) so pasting into a rich text field like an Azure DevOps work item
+// keeps bold field labels and a monospaced, line-broken message block.
+function buildTicketHtml(entry) {
+  const rows = ticketFields(entry)
+    .map(([label, value]) => `<p style="margin:0 0 4px;"><b>${escapeHtml(label)}:</b> ${escapeHtml(value)}</p>`)
+    .join("");
+  const message = `<pre style="margin:0;padding:8px 10px;background:#f3f3f3;border:1px solid #ddd;border-radius:4px;font-family:Consolas,'Courier New',monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(entry.message)}</pre>`;
+  return `<div>${rows}<p style="margin:12px 0 4px;"><b>Nachricht:</b></p>${message}</div>`;
+}
+
+function CopyTicketMenu({ entry }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(null); // "devops" | "plain" | null
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  async function handleCopyDevOps() {
+    await copyRichText(buildTicketHtml(entry), buildTicketText(entry));
+    setOpen(false);
+    setCopied("devops");
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function handleCopyPlain() {
+    await copyPlainText(buildTicketText(entry));
+    setOpen(false);
+    setCopied("plain");
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  const label =
+    copied === "devops" ? "Für Azure DevOps kopiert!" : copied === "plain" ? "Kopiert!" : "Für Support-Ticket kopieren";
+
+  return (
+    <div className="copy-menu" ref={rootRef}>
+      <button type="button" className="modal-copy-button" onClick={() => setOpen((o) => !o)}>
+        {copied ? <CheckIcon /> : <CopyIcon />}
+        {label}
+        <ChevronDownIcon className="copy-menu-chevron" />
+      </button>
+      {open && (
+        <div className="copy-menu-list" role="menu">
+          <button type="button" role="menuitem" onClick={handleCopyDevOps}>
+            Für Azure DevOps kopieren
+          </button>
+          <button type="button" role="menuitem" onClick={handleCopyPlain}>
+            In Zwischenablage kopieren
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LogEntryModal({ entry, onClose }) {
-  const [copied, setCopied] = useState(false);
   const [showOccurrences, setShowOccurrences] = useState(false);
 
   useEffect(() => {
@@ -35,29 +107,10 @@ export default function LogEntryModal({ entry, onClose }) {
   }, [onClose]);
 
   useEffect(() => {
-    setCopied(false);
     setShowOccurrences(false);
   }, [entry]);
 
   if (!entry) return null;
-
-  async function handleCopy() {
-    const text = buildTicketText(entry);
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -96,10 +149,7 @@ export default function LogEntryModal({ entry, onClose }) {
           <button type="button" className="secondary" onClick={onClose}>
             Schließen
           </button>
-          <button type="button" className="modal-copy-button" onClick={handleCopy}>
-            {copied ? <CheckIcon /> : <CopyIcon />}
-            {copied ? "Kopiert!" : "Für Support-Ticket kopieren"}
-          </button>
+          <CopyTicketMenu entry={entry} />
         </div>
       </div>
     </div>

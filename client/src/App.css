@@ -1021,6 +1021,39 @@
   margin-bottom: 20px;
 }
 
+.draggable-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.draggable-row > *:last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.draggable-row.dragging {
+  opacity: 0.45;
+}
+
+.drag-handle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:hover {
+  color: var(--text-h);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .source-row {
   display: flex;
   align-items: center;
@@ -1676,6 +1709,34 @@
   color: var(--muted);
 }
 
+.modal-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  font-size: 13px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.message-copy-button:hover {
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
 .modal-value {
   font-size: 14px;
   color: var(--text-h);
@@ -1748,6 +1809,47 @@
 .modal-copy-button:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow);
+}
+
+.copy-menu {
+  position: relative;
+}
+
+.copy-menu-chevron {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.copy-menu-list {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+}
+
+.copy-menu-list button {
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.copy-menu-list button:hover {
+  background: var(--code-bg);
 }
 
 .modal-card-wide {

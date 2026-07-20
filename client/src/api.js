@@ -44,6 +44,10 @@ export function deleteSource(id) {
   return send("DELETE", `/sources/${id}`);
 }
 
+export function reorderSources(order) {
+  return send("PUT", "/sources/reorder", { order });
+}
+
 export function browseFolder() {
   return get("/browse-folder");
 }
@@ -62,6 +66,10 @@ export function updateServer(id, { name, host }) {
 
 export function deleteServer(id) {
   return send("DELETE", `/servers/${id}`);
+}
+
+export function reorderServers(order) {
+  return send("PUT", "/servers/reorder", { order });
 }
 
 export function addService(serverId, { name, serviceName }) {

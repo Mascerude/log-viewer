@@ -1,10 +1,35 @@
+import { useState } from "react";
 import { LEVEL_COLORS } from "../levelColors";
 import FormattedMessage, { isStackTraceMessage } from "../stackTrace";
+import { copyPlainText } from "../clipboard";
+import { CopyIcon, CheckIcon } from "./icons";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
   const [y, m, d] = datePart.split("-");
   return `${d}.${m}.${y} ${timePart}`;
+}
+
+function MessageCopyButton({ message }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await copyPlainText(message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      className="message-copy-button"
+      onClick={handleCopy}
+      title="Nachricht kopieren"
+      aria-label="Nachricht kopieren"
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
 }
 
 // The label/value grid + message block used to show one log entry's details.
@@ -56,7 +81,10 @@ export default function EntryFields({ entry, singleColumn = false }) {
       </div>
 
       <div className="modal-field modal-field-wide">
-        <span className="modal-label">Nachricht</span>
+        <div className="modal-label-row">
+          <span className="modal-label">Nachricht</span>
+          <MessageCopyButton message={entry.message} />
+        </div>
         <pre className={`modal-message${isStackTraceMessage(entry.message) ? " st-block" : ""}`}>
           <FormattedMessage message={entry.message} />
         </pre>

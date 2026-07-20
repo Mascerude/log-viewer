@@ -70,6 +70,14 @@ export function ChevronRightIcon(props) {
   );
 }
 
+export function ChevronDownIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 9.5 12 16l7-6.5" />
+    </svg>
+  );
+}
+
 export function AlertIcon(props) {
   return (
     <svg {...base} {...props}>
@@ -119,6 +127,19 @@ export function FilterXIcon(props) {
     <svg {...base} {...props}>
       <path d="M3 5h12l-4.5 5.5v6L8 18v-6.5L3 5Z" />
       <path d="M17 4l4 4M21 4l-4 4" />
+    </svg>
+  );
+}
+
+export function GripIcon(props) {
+  return (
+    <svg {...base} {...props} fill="currentColor" stroke="none">
+      <circle cx="9" cy="6" r="1.4" />
+      <circle cx="15" cy="6" r="1.4" />
+      <circle cx="9" cy="12" r="1.4" />
+      <circle cx="15" cy="12" r="1.4" />
+      <circle cx="9" cy="18" r="1.4" />
+      <circle cx="15" cy="18" r="1.4" />
     </svg>
   );
 }
