@@ -13,16 +13,27 @@ function formatTimestamp(iso) {
   return `${d}.${m}.${y} ${timePart}`;
 }
 
-export default function LogTable({ entries, total, page, pageSize, loading, error, showSource, onPageChange }) {
+export default function LogTable({
+  entries,
+  total,
+  page,
+  pageSize,
+  loading,
+  error,
+  showSource,
+  showService,
+  onPageChange,
+  title = "Log-Einträge",
+}) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const colCount = showSource ? 6 : 5;
+  const colCount = 5 + (showSource ? 1 : 0) + (showService ? 1 : 0);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const { selected, handleRowClick, clear, compareOpen, setCompareOpen, compareEntries } = useCompareSelection();
 
   return (
     <div className="table-card">
       <div className="table-header">
-        <h2>Log-Einträge</h2>
+        <h2>{title}</h2>
         <span className="table-count">
           {total.toLocaleString("de-DE")} Einträge{loading ? " · lädt..." : ""}
         </span>
@@ -39,6 +50,7 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
               <th className="col-time">Zeitstempel</th>
               <th className="col-level">Level</th>
               {showSource && <th className="col-source">Server</th>}
+              {showService && <th className="col-service">Service</th>}
               <th className="col-pid">PID</th>
               <th className="col-tid">TID</th>
               <th className="col-message">Nachricht</th>
@@ -69,6 +81,7 @@ export default function LogTable({ entries, total, page, pageSize, loading, erro
                   </span>
                 </td>
                 {showSource && <td className="col-source">{e.sourceName}</td>}
+                {showService && <td className="col-service">{e.service}</td>}
                 <td className="col-pid">{e.pid}</td>
                 <td className="col-tid">{e.tid}</td>
                 <td className="col-message">

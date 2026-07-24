@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSources, getGroups, getServers, getFiles, getSettings, getSummary } from "./api";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
+import SearchPage from "./components/SearchPage";
 import ServiceView from "./components/ServiceView";
 import SettingsPage from "./components/SettingsPage";
 import "./App.css";
@@ -128,6 +129,9 @@ export default function App() {
   function goHome() {
     setView({ name: "home" });
   }
+  function goSearch() {
+    setView({ name: "search" });
+  }
   function goSettings() {
     setView({ name: "settings" });
   }
@@ -144,6 +148,7 @@ export default function App() {
         view={view}
         onSelectHome={goHome}
         onSelectService={goService}
+        onSelectSearch={goSearch}
         onSelectSettings={goSettings}
       />
       <div className="main-content">
@@ -158,6 +163,8 @@ export default function App() {
               onSelectService={goService}
             />
           )}
+
+          {view.name === "search" && <SearchPage />}
 
           {view.name === "service" && (
             <ServiceView

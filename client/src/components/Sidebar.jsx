@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon, ChevronRightIcon, FolderIcon } from "./icons";
+import { HomeIcon, SettingsIcon, SearchIcon, ChevronRightIcon, FolderIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
@@ -81,7 +81,7 @@ function GroupSection({ group, groupSources, servicesBySource, isOpen, onToggle,
   );
 }
 
-export default function Sidebar({ sources, groups, files, view, onSelectHome, onSelectService, onSelectSettings }) {
+export default function Sidebar({ sources, groups, files, view, onSelectHome, onSelectService, onSelectSearch, onSelectSettings }) {
   const servicesBySource = useMemo(() => {
     const map = new Map();
     for (const f of files) {
@@ -206,6 +206,14 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
           </>
         )}
       </div>
+
+      <button
+        type="button"
+        className={`sidebar-search${view.name === "search" ? " active" : ""}`}
+        onClick={onSelectSearch}
+      >
+        <SearchIcon className="sidebar-icon" /> Suche
+      </button>
 
       <button
         type="button"
