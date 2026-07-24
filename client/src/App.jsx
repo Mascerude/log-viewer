@@ -164,7 +164,7 @@ export default function App() {
             />
           )}
 
-          {view.name === "search" && <SearchPage />}
+          {view.name === "search" && <SearchPage sources={sources} files={files} />}
 
           {view.name === "service" && (
             <ServiceView

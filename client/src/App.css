@@ -1620,6 +1620,27 @@
   background: var(--code-bg);
 }
 
+.global-search-filter-group {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group-title {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.filter-group-hint {
+  text-transform: none;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+
 .status-list {
   display: flex;
   flex-direction: column;

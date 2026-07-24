@@ -540,7 +540,8 @@ app.get("/api/logs", (req, res) => {
     pageSize = "200",
   } = req.query;
 
-  const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);
+  const services = service ? String(service).split(",").filter(Boolean) : null;
+  const files = getFilesInRange(from, to, source).filter((f) => !services || services.includes(f.service));
   let entries = filterEntriesByDate(loadEntries(files), from, to);
   entries = applyEntryFilters(entries, { level, pid, tid, search });
 
