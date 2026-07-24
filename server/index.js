@@ -536,12 +536,35 @@ app.get("/api/logs", (req, res) => {
     tid,
     service,
     source,
+    servicePairs,
     page = "1",
     pageSize = "200",
   } = req.query;
 
   const services = service ? String(service).split(",").filter(Boolean) : null;
-  const files = getFilesInRange(from, to, source).filter((f) => !services || services.includes(f.service));
+
+  // Distinct from `service`: an exact (sourceId, service) allowlist, needed
+  // because two different sources can happen to run a same-named service —
+  // filtering by name alone would blend their entries together.
+  let pairFilter = null;
+  if (servicePairs) {
+    let parsed;
+    try {
+      parsed = JSON.parse(servicePairs);
+    } catch {
+      return res.status(400).json({ error: "servicePairs ist kein gültiges JSON." });
+    }
+    if (!Array.isArray(parsed)) {
+      return res.status(400).json({ error: "servicePairs muss ein Array sein." });
+    }
+    pairFilter = new Set(parsed.map(([sourceId, svc]) => `${sourceId}::${svc}`));
+  }
+
+  const files = getFilesInRange(from, to, source).filter((f) => {
+    if (services && !services.includes(f.service)) return false;
+    if (pairFilter && !pairFilter.has(`${f.sourceId}::${f.service}`)) return false;
+    return true;
+  });
   let entries = filterEntriesByDate(loadEntries(files), from, to);
   entries = applyEntryFilters(entries, { level, pid, tid, search });
 

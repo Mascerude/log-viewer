@@ -112,8 +112,8 @@ export function getStats({ from, to, source, service, level, search, pid, tid } 
   return get("/stats", { from, to, source, service, level, search, pid, tid });
 }
 
-export function getLogs({ from, to, level, search, pid, tid, service, source, page, pageSize } = {}) {
-  return get("/logs", { from, to, level, search, pid, tid, service, source, page, pageSize });
+export function getLogs({ from, to, level, search, pid, tid, service, source, servicePairs, page, pageSize } = {}) {
+  return get("/logs", { from, to, level, search, pid, tid, service, source, servicePairs, page, pageSize });
 }
 
 export function getSummary() {
