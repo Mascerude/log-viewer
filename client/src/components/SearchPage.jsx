@@ -3,7 +3,7 @@ import { getLogs } from "../api";
 import { SearchIcon, CloseIcon } from "./icons";
 import LogTable from "./LogTable";
 
-const SEARCH_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
 
 // Services aren't unique by name alone — different sources can happen to run
 // a same-named service. Keying selection on (sourceId, service) keeps those
@@ -19,6 +19,7 @@ export default function SearchPage({ sources, files }) {
   const [selectedSourceIds, setSelectedSourceIds] = useState(() => new Set());
   const [selectedServiceKeys, setSelectedServiceKeys] = useState(() => new Set());
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [results, setResults] = useState({ entries: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -65,7 +66,7 @@ export default function SearchPage({ sources, files }) {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, selectedSourceIds, selectedServiceKeys]);
+  }, [debouncedQuery, selectedSourceIds, selectedServiceKeys, pageSize]);
 
   const sourceParam = selectedSourceIds.size ? Array.from(selectedSourceIds).join(",") : undefined;
   const servicePairsParam = selectedServiceKeys.size
@@ -85,12 +86,12 @@ export default function SearchPage({ sources, files }) {
       source: sourceParam,
       servicePairs: servicePairsParam,
       page,
-      pageSize: SEARCH_PAGE_SIZE,
+      pageSize,
     })
       .then(setResults)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [debouncedQuery, sourceParam, servicePairsParam, page]);
+  }, [debouncedQuery, sourceParam, servicePairsParam, page, pageSize]);
 
   function toggleSource(id) {
     setSelectedSourceIds((prev) => {
@@ -192,12 +193,13 @@ export default function SearchPage({ sources, files }) {
           entries={results.entries}
           total={results.total}
           page={page}
-          pageSize={SEARCH_PAGE_SIZE}
+          pageSize={pageSize}
           loading={loading}
           error={error}
           showSource
           showService
           onPageChange={setPage}
+          onPageSizeChange={setPageSize}
         />
       ) : (
         <div className="chart-card">

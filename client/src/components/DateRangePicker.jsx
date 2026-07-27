@@ -46,7 +46,7 @@ const MONTH_NAMES = [
 ];
 const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
-export default function DateRangePicker({ from, to, minDate, maxDate, onChange }) {
+export default function DateRangePicker({ from, to, fromTime, toTime, minDate, maxDate, onChange }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(null);
   const [coords, setCoords] = useState(null);
@@ -139,7 +139,11 @@ export default function DateRangePicker({ from, to, minDate, maxDate, onChange }
     return isoFromParts(now.getFullYear(), now.getMonth(), now.getDate());
   }, []);
 
-  const label = from ? (to ? `${formatDisplay(from)} – ${formatDisplay(to)}` : `${formatDisplay(from)} – ...`) : "Zeitraum wählen";
+  const label = from
+    ? to
+      ? `${formatDisplay(from)} ${fromTime} – ${formatDisplay(to)} ${toTime}`
+      : `${formatDisplay(from)} ${fromTime} – ...`
+    : "Zeitraum wählen";
 
   const popover = open && coords && (
     <div
@@ -197,9 +201,36 @@ export default function DateRangePicker({ from, to, minDate, maxDate, onChange }
         })}
       </div>
 
+      <div className="date-range-time-row">
+        <label className="date-range-time-field">
+          Von
+          <input
+            type="time"
+            className="time-input"
+            value={fromTime}
+            onChange={(e) => onChange({ fromTime: e.target.value })}
+            aria-label="Uhrzeit von"
+          />
+        </label>
+        <label className="date-range-time-field">
+          Bis
+          <input
+            type="time"
+            className="time-input"
+            value={toTime}
+            onChange={(e) => onChange({ toTime: e.target.value })}
+            aria-label="Uhrzeit bis"
+          />
+        </label>
+      </div>
+
       {(from || to) && (
         <div className="date-range-footer">
-          <button type="button" className="date-range-clear" onClick={() => onChange({ from: "", to: "" })}>
+          <button
+            type="button"
+            className="date-range-clear"
+            onClick={() => onChange({ from: "", to: "", fromTime: "00:00", toTime: "23:59" })}
+          >
             Zurücksetzen
           </button>
         </div>

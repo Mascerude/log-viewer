@@ -25,7 +25,15 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
     <div className="filter-bar">
       <div className="filter-group">
         <label>Zeitraum</label>
-        <DateRangePicker from={filters.from} to={filters.to} minDate={minDate} maxDate={maxDate} onChange={set} />
+        <DateRangePicker
+          from={filters.from}
+          to={filters.to}
+          fromTime={filters.fromTime}
+          toTime={filters.toTime}
+          minDate={minDate}
+          maxDate={maxDate}
+          onChange={set}
+        />
       </div>
 
       <div className="filter-group level-toggles" role="group" aria-label="Level filtern">
@@ -130,6 +138,8 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
           set({
             from: "",
             to: "",
+            fromTime: "00:00",
+            toTime: "23:59",
             levels: new Set(Object.values(LEVEL_LETTERS)),
             sources: new Set((sources || []).map((s) => s.id)),
             search: "",

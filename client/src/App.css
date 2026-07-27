@@ -10,7 +10,7 @@
 }
 
 .app {
-  max-width: 1280px;
+  max-width: 1680px;
   margin: 0 auto;
   padding: 32px 32px 72px;
   text-align: left;
@@ -353,8 +353,7 @@
 /* Filter bar */
 .filter-bar {
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
+  flex-wrap: wrap;
   align-items: end;
   gap: 14px 18px;
   padding: 18px 20px;
@@ -401,6 +400,10 @@
 
 .filter-group-search input {
   width: 190px;
+}
+
+.time-input {
+  width: 92px;
 }
 
 /* Date range picker */
@@ -531,6 +534,23 @@
   background: var(--accent);
   color: var(--accent-fg);
   font-weight: 600;
+}
+
+.date-range-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.date-range-time-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
 .date-range-footer {
@@ -900,11 +920,45 @@
 .pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 16px;
   margin-top: 16px;
   font-size: 13px;
   color: var(--muted);
+}
+
+.pagination-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto;
+}
+
+.page-size-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-size-control label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.page-size-control select,
+.page-size-custom-input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.page-size-custom-input {
+  width: 70px;
 }
 
 .pagination button {

@@ -234,8 +234,14 @@ function getFilesInRange(from, to, sourceParam) {
   });
 }
 
-function filterEntriesByDate(entries, from, to) {
-  return entries.filter((e) => (!from || e.date >= from) && (!to || e.date <= to));
+// Combines the date-range boundaries with a time-of-day, so e.g. "20.03. –
+// 21.03." with "08:00 – 17:00" excludes entries outside office hours on both
+// boundary days while leaving any full days in between untouched. Comparing
+// full ISO timestamps as strings works because ISO 8601 sorts lexicographically.
+function filterEntriesByDate(entries, from, to, fromTime, toTime) {
+  const fromDT = from ? `${from}T${fromTime || "00:00"}:00.000` : null;
+  const toDT = to ? `${to}T${toTime || "23:59"}:59.999` : null;
+  return entries.filter((e) => (!fromDT || e.timestamp >= fromDT) && (!toDT || e.timestamp <= toDT));
 }
 
 // Shared by /api/logs and /api/stats so the chart always reflects the same
@@ -530,6 +536,8 @@ app.get("/api/logs", (req, res) => {
   const {
     from,
     to,
+    fromTime,
+    toTime,
     level,
     search,
     pid,
@@ -565,7 +573,7 @@ app.get("/api/logs", (req, res) => {
     if (pairFilter && !pairFilter.has(`${f.sourceId}::${f.service}`)) return false;
     return true;
   });
-  let entries = filterEntriesByDate(loadEntries(files), from, to);
+  let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
   entries = applyEntryFilters(entries, { level, pid, tid, search });
 
   entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
@@ -636,9 +644,9 @@ app.get("/api/message-occurrences", (req, res) => {
 });
 
 app.get("/api/stats", (req, res) => {
-  const { from, to, source, service, level, search, pid, tid } = req.query;
+  const { from, to, fromTime, toTime, source, service, level, search, pid, tid } = req.query;
   const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);
-  let entries = filterEntriesByDate(loadEntries(files), from, to);
+  let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
   entries = applyEntryFilters(entries, { level, pid, tid, search });
 
   const byDate = new Map();

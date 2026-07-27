@@ -4,6 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import LogEntryModal from "./LogEntryModal";
 import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
+import PageSizeSelect from "./PageSizeSelect";
 import useCompareSelection from "../useCompareSelection";
 import FormattedMessage from "../stackTrace";
 
@@ -23,6 +24,7 @@ export default function LogTable({
   showSource,
   showService,
   onPageChange,
+  onPageSizeChange,
   title = "Log-Einträge",
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -96,15 +98,18 @@ export default function LogTable({
       </div>
 
       <div className="pagination">
-        <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          <ChevronLeftIcon /> Zurück
-        </button>
-        <span>
-          Seite {page} von {pageCount}
-        </span>
-        <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
-          Weiter <ChevronRightIcon />
-        </button>
+        <PageSizeSelect pageSize={pageSize} onChange={onPageSizeChange} />
+        <div className="pagination-nav">
+          <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+            <ChevronLeftIcon /> Zurück
+          </button>
+          <span>
+            Seite {page} von {pageCount}
+          </span>
+          <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
+            Weiter <ChevronRightIcon />
+          </button>
+        </div>
       </div>
 
       <LogEntryModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />

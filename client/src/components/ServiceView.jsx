@@ -7,7 +7,7 @@ import LogTable from "./LogTable";
 import { RefreshIcon } from "./icons";
 
 const ALL_LETTERS = new Set(Object.values(LEVEL_LETTERS));
-const PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE = 20;
 
 export default function ServiceView({ sourceId, service, sourceName, files, refreshIntervalSeconds }) {
   const relevantFiles = useMemo(
@@ -37,6 +37,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
   const [filters, setFilters] = useState(() => ({
     from: minDate,
     to: maxDate,
+    fromTime: "00:00",
+    toTime: "23:59",
     levels: new Set(ALL_LETTERS),
     search: "",
     pid: "",
@@ -44,6 +46,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
   }));
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [stats, setStats] = useState([]);
   const [logs, setLogs] = useState({ entries: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -58,7 +61,17 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
 
   useEffect(() => {
     setPage(1);
-  }, [filters.from, filters.to, filters.levels, debouncedSearch, filters.pid, filters.tid]);
+  }, [
+    filters.from,
+    filters.to,
+    filters.fromTime,
+    filters.toTime,
+    filters.levels,
+    debouncedSearch,
+    filters.pid,
+    filters.tid,
+    pageSize,
+  ]);
 
   // Auto-refresh: re-fetch periodically without disturbing the user's filters
   useEffect(() => {
@@ -80,6 +93,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     getStats({
       from: filters.from,
       to: filters.to,
+      fromTime: filters.fromTime,
+      toTime: filters.toTime,
       source: sourceId,
       service,
       level: levelParam,
@@ -89,7 +104,19 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     })
       .then(setStats)
       .catch((err) => setError(err.message));
-  }, [filters.from, filters.to, levelParam, debouncedSearch, filters.pid, filters.tid, sourceId, service, refreshTick]);
+  }, [
+    filters.from,
+    filters.to,
+    filters.fromTime,
+    filters.toTime,
+    levelParam,
+    debouncedSearch,
+    filters.pid,
+    filters.tid,
+    sourceId,
+    service,
+    refreshTick,
+  ]);
 
   useEffect(() => {
     setLoading(true);
@@ -97,6 +124,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     getLogs({
       from: filters.from,
       to: filters.to,
+      fromTime: filters.fromTime,
+      toTime: filters.toTime,
       level: levelParam,
       source: sourceId,
       service,
@@ -104,7 +133,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       pid: filters.pid,
       tid: filters.tid,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
     })
       .then((result) => {
         setLogs(result);
@@ -112,7 +141,21 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [filters.from, filters.to, levelParam, sourceId, service, debouncedSearch, filters.pid, filters.tid, page, refreshTick]);
+  }, [
+    filters.from,
+    filters.to,
+    filters.fromTime,
+    filters.toTime,
+    levelParam,
+    sourceId,
+    service,
+    debouncedSearch,
+    filters.pid,
+    filters.tid,
+    page,
+    pageSize,
+    refreshTick,
+  ]);
 
   function toggleChartLevel(name) {
     const letter = LEVEL_LETTERS[name];
@@ -126,7 +169,14 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
 
   function handleSelectDayLevel(date, levelName) {
     const letter = LEVEL_LETTERS[levelName];
-    setFilters((prev) => ({ ...prev, from: date, to: date, levels: new Set([letter]) }));
+    setFilters((prev) => ({
+      ...prev,
+      from: date,
+      to: date,
+      fromTime: "00:00",
+      toTime: "23:59",
+      levels: new Set([letter]),
+    }));
   }
 
   return (
@@ -158,11 +208,12 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
         entries={logs.entries}
         total={logs.total}
         page={page}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         loading={loading}
         error={error}
         showSource={false}
         onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
     </div>
   );

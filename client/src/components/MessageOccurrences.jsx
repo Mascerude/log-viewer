@@ -5,6 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import LogEntryModal from "./LogEntryModal";
 import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
+import PageSizeSelect from "./PageSizeSelect";
 import useCompareSelection from "../useCompareSelection";
 
 function formatTimestamp(iso) {
@@ -24,7 +25,8 @@ const MODES = [
   { value: "similar", label: "Ähnlich", hint: "Zahlen/IDs in der Nachricht werden ignoriert" },
 ];
 
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 200;
 
 // `entry` is the log entry whose detail popup this search was opened from —
 // it's pre-selected for comparison, so ticking off matches from the results
@@ -34,6 +36,7 @@ export default function MessageOccurrences({ entry }) {
   const [scope, setScope] = useState("service");
   const [mode, setMode] = useState("exact");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,20 +47,20 @@ export default function MessageOccurrences({ entry }) {
 
   useEffect(() => {
     setPage(1);
-  }, [scope, mode]);
+  }, [scope, mode, pageSize]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getMessageOccurrences({ message, scope, mode, sourceId, service, page, pageSize: PAGE_SIZE })
+    getMessageOccurrences({ message, scope, mode, sourceId, service, page, pageSize })
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [message, scope, mode, sourceId, service, page]);
+  }, [message, scope, mode, sourceId, service, page, pageSize]);
 
   const counts = data?.counts;
   const entries = data?.entries ?? [];
-  const pageCount = counts ? Math.max(1, Math.ceil(counts.total / PAGE_SIZE)) : 1;
+  const pageCount = counts ? Math.max(1, Math.ceil(counts.total / pageSize)) : 1;
   const showSource = scope === "global";
   const showService = scope !== "service";
   const showMessage = mode === "similar";
@@ -172,17 +175,20 @@ export default function MessageOccurrences({ entry }) {
         </table>
       </div>
 
-      {counts && counts.total > PAGE_SIZE && (
+      {counts && (
         <div className="pagination occurrence-pagination">
-          <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            <ChevronLeftIcon /> Zurück
-          </button>
-          <span>
-            Seite {page} von {pageCount}
-          </span>
-          <button type="button" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
-            Weiter <ChevronRightIcon />
-          </button>
+          <PageSizeSelect pageSize={pageSize} onChange={setPageSize} max={MAX_PAGE_SIZE} />
+          <div className="pagination-nav">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeftIcon /> Zurück
+            </button>
+            <span>
+              Seite {page} von {pageCount}
+            </span>
+            <button type="button" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
+              Weiter <ChevronRightIcon />
+            </button>
+          </div>
         </div>
       )}
 
