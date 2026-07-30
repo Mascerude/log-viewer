@@ -245,8 +245,8 @@ function filterEntriesByDate(entries, from, to, fromTime, toTime) {
 }
 
 // Shared by /api/logs and /api/stats so the chart always reflects the same
-// level/search/pid/tid filters as the table.
-function applyEntryFilters(entries, { level, pid, tid, search } = {}) {
+// level/search/exclude/pid/tid filters as the table.
+function applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeMode } = {}) {
   let result = entries;
   if (level) {
     const levels = String(level).split(",").filter(Boolean);
@@ -258,7 +258,32 @@ function applyEntryFilters(entries, { level, pid, tid, search } = {}) {
     const needle = String(search).toLowerCase();
     result = result.filter((e) => e.message.toLowerCase().includes(needle));
   }
+  if (exclude) {
+    const needle = String(exclude).toLowerCase();
+    result =
+      excludeMode === "exact"
+        ? result.filter((e) => e.message.toLowerCase() !== needle)
+        : result.filter((e) => !e.message.toLowerCase().includes(needle));
+  }
   return result;
+}
+
+const SORTABLE_FIELDS = new Set(["timestamp", "pid", "tid"]);
+
+// pid/tid are stored as strings (straight regex captures) but need numeric
+// comparison — "9" would otherwise sort after "10". timestamp is ISO 8601
+// and sorts correctly as a plain string.
+function sortEntries(entries, sortBy, sortDir) {
+  const field = SORTABLE_FIELDS.has(sortBy) ? sortBy : "timestamp";
+  const factor = sortDir === "asc" ? 1 : -1;
+  const numeric = field === "pid" || field === "tid";
+  return entries.slice().sort((a, b) => {
+    const av = numeric ? Number(a[field]) : a[field];
+    const bv = numeric ? Number(b[field]) : b[field];
+    if (av < bv) return -factor;
+    if (av > bv) return factor;
+    return 0;
+  });
 }
 
 function loadEntries(files) {
@@ -540,11 +565,15 @@ app.get("/api/logs", (req, res) => {
     toTime,
     level,
     search,
+    exclude,
+    excludeMode,
     pid,
     tid,
     service,
     source,
     servicePairs,
+    sortBy = "timestamp",
+    sortDir = "desc",
     page = "1",
     pageSize = "200",
   } = req.query;
@@ -574,9 +603,8 @@ app.get("/api/logs", (req, res) => {
     return true;
   });
   let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
-  entries = applyEntryFilters(entries, { level, pid, tid, search });
-
-  entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+  entries = applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeMode });
+  entries = sortEntries(entries, sortBy, sortDir);
 
   const total = entries.length;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -606,7 +634,17 @@ function normalizeMessage(message) {
 // template (numbers ignored) so recurring messages with different ids/counts
 // are grouped together too.
 app.get("/api/message-occurrences", (req, res) => {
-  const { message, scope = "service", mode = "exact", sourceId, service, page = "1", pageSize = "50" } = req.query;
+  const {
+    message,
+    scope = "service",
+    mode = "exact",
+    sourceId,
+    service,
+    sortBy = "timestamp",
+    sortDir = "desc",
+    page = "1",
+    pageSize = "50",
+  } = req.query;
   if (!message) return res.status(400).json({ error: "message ist erforderlich." });
 
   let files;
@@ -623,10 +661,10 @@ app.get("/api/message-occurrences", (req, res) => {
   }
 
   const normalizedTarget = mode === "similar" ? normalizeMessage(message) : null;
-  const entries = loadEntries(files).filter((e) =>
+  let entries = loadEntries(files).filter((e) =>
     mode === "similar" ? normalizeMessage(e.message) === normalizedTarget : e.message === message
   );
-  entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+  entries = sortEntries(entries, sortBy, sortDir);
 
   const counts = {
     last24h: countSince(entries, 1),
@@ -644,10 +682,10 @@ app.get("/api/message-occurrences", (req, res) => {
 });
 
 app.get("/api/stats", (req, res) => {
-  const { from, to, fromTime, toTime, source, service, level, search, pid, tid } = req.query;
+  const { from, to, fromTime, toTime, source, service, level, search, exclude, excludeMode, pid, tid } = req.query;
   const files = getFilesInRange(from, to, source).filter((f) => !service || f.service === service);
   let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
-  entries = applyEntryFilters(entries, { level, pid, tid, search });
+  entries = applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeMode });
 
   const byDate = new Map();
   for (const f of files) {

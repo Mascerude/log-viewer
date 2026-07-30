@@ -6,7 +6,9 @@ import LogEntryModal from "./LogEntryModal";
 import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
 import PageSizeSelect from "./PageSizeSelect";
+import SortableHeader from "./SortableHeader";
 import useCompareSelection from "../useCompareSelection";
+import useSort from "../useSort";
 
 function formatTimestamp(iso) {
   const [datePart, timePart] = iso.split("T");
@@ -37,6 +39,7 @@ export default function MessageOccurrences({ entry }) {
   const [mode, setMode] = useState("exact");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const { sortBy, sortDir, toggleSort } = useSort();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,16 +50,16 @@ export default function MessageOccurrences({ entry }) {
 
   useEffect(() => {
     setPage(1);
-  }, [scope, mode, pageSize]);
+  }, [scope, mode, pageSize, sortBy, sortDir]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getMessageOccurrences({ message, scope, mode, sourceId, service, page, pageSize })
+    getMessageOccurrences({ message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize })
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [message, scope, mode, sourceId, service, page, pageSize]);
+  }, [message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize]);
 
   const counts = data?.counts;
   const entries = data?.entries ?? [];
@@ -127,12 +130,12 @@ export default function MessageOccurrences({ entry }) {
         <table className="log-table occurrence-table">
           <thead>
             <tr>
-              <th>Zeitstempel</th>
+              <SortableHeader label="Zeitstempel" column="timestamp" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
               <th>Level</th>
               {showSource && <th>Quelle</th>}
               {showService && <th>Service</th>}
-              <th>PID</th>
-              <th>TID</th>
+              <SortableHeader label="PID" column="pid" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="TID" column="tid" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
               {showMessage && <th>Nachricht</th>}
             </tr>
           </thead>

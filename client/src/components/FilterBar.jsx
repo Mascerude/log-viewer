@@ -129,6 +129,39 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
         />
       </div>
 
+      <div className="filter-group filter-group-search">
+        <label htmlFor="exclude">Ausschließen</label>
+        <div className="exclude-field">
+          <input
+            id="exclude"
+            type="text"
+            placeholder="Nachricht ausschließen..."
+            value={filters.exclude}
+            onChange={(e) => set({ exclude: e.target.value })}
+          />
+          <div className="exclude-mode-toggle" role="group" aria-label="Ausschluss-Modus">
+            <button
+              type="button"
+              className={`exclude-mode-chip${filters.excludeMode === "contains" ? " active" : ""}`}
+              onClick={() => set({ excludeMode: "contains" })}
+              aria-pressed={filters.excludeMode === "contains"}
+              title="Nachrichten ausschließen, die diesen Text enthalten"
+            >
+              Enthält
+            </button>
+            <button
+              type="button"
+              className={`exclude-mode-chip${filters.excludeMode === "exact" ? " active" : ""}`}
+              onClick={() => set({ excludeMode: "exact" })}
+              aria-pressed={filters.excludeMode === "exact"}
+              title="Nur Nachrichten ausschließen, die exakt diesem Text entsprechen"
+            >
+              Exakt
+            </button>
+          </div>
+        </div>
+      </div>
+
       <button
         type="button"
         className="reset-button"
@@ -143,6 +176,8 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
             levels: new Set(Object.values(LEVEL_LETTERS)),
             sources: new Set((sources || []).map((s) => s.id)),
             search: "",
+            exclude: "",
+            excludeMode: "contains",
             pid: "",
             tid: "",
             service: "",

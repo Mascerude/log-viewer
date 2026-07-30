@@ -5,6 +5,7 @@ import FilterBar from "./FilterBar";
 import ErrorChart from "./ErrorChart";
 import LogTable from "./LogTable";
 import { RefreshIcon } from "./icons";
+import useSort from "../useSort";
 
 const ALL_LETTERS = new Set(Object.values(LEVEL_LETTERS));
 const DEFAULT_PAGE_SIZE = 20;
@@ -41,12 +42,16 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     toTime: "23:59",
     levels: new Set(ALL_LETTERS),
     search: "",
+    exclude: "",
+    excludeMode: "contains",
     pid: "",
     tid: "",
   }));
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedExclude, setDebouncedExclude] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const { sortBy, sortDir, toggleSort } = useSort();
   const [stats, setStats] = useState([]);
   const [logs, setLogs] = useState({ entries: [], total: 0 });
   const [loading, setLoading] = useState(false);
@@ -60,6 +65,11 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
   }, [filters.search]);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedExclude(filters.exclude), 300);
+    return () => clearTimeout(t);
+  }, [filters.exclude]);
+
+  useEffect(() => {
     setPage(1);
   }, [
     filters.from,
@@ -68,9 +78,13 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     filters.toTime,
     filters.levels,
     debouncedSearch,
+    debouncedExclude,
+    filters.excludeMode,
     filters.pid,
     filters.tid,
     pageSize,
+    sortBy,
+    sortDir,
   ]);
 
   // Auto-refresh: re-fetch periodically without disturbing the user's filters
@@ -99,6 +113,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       service,
       level: levelParam,
       search: debouncedSearch,
+      exclude: debouncedExclude,
+      excludeMode: filters.excludeMode,
       pid: filters.pid,
       tid: filters.tid,
     })
@@ -111,6 +127,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     filters.toTime,
     levelParam,
     debouncedSearch,
+    debouncedExclude,
+    filters.excludeMode,
     filters.pid,
     filters.tid,
     sourceId,
@@ -130,8 +148,12 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       source: sourceId,
       service,
       search: debouncedSearch,
+      exclude: debouncedExclude,
+      excludeMode: filters.excludeMode,
       pid: filters.pid,
       tid: filters.tid,
+      sortBy,
+      sortDir,
       page,
       pageSize,
     })
@@ -150,8 +172,12 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     sourceId,
     service,
     debouncedSearch,
+    debouncedExclude,
+    filters.excludeMode,
     filters.pid,
     filters.tid,
+    sortBy,
+    sortDir,
     page,
     pageSize,
     refreshTick,
@@ -214,6 +240,9 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
         showSource={false}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={toggleSort}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import LogEntryModal from "./LogEntryModal";
 import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
 import PageSizeSelect from "./PageSizeSelect";
+import SortableHeader from "./SortableHeader";
 import useCompareSelection from "../useCompareSelection";
 import FormattedMessage from "../stackTrace";
 
@@ -25,6 +26,9 @@ export default function LogTable({
   showService,
   onPageChange,
   onPageSizeChange,
+  sortBy,
+  sortDir,
+  onSortChange,
   title = "Log-Einträge",
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -49,12 +53,33 @@ export default function LogTable({
         <table className="log-table">
           <thead>
             <tr>
-              <th className="col-time">Zeitstempel</th>
+              <SortableHeader
+                label="Zeitstempel"
+                column="timestamp"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={onSortChange}
+                className="col-time"
+              />
               <th className="col-level">Level</th>
               {showSource && <th className="col-source">Server</th>}
               {showService && <th className="col-service">Service</th>}
-              <th className="col-pid">PID</th>
-              <th className="col-tid">TID</th>
+              <SortableHeader
+                label="PID"
+                column="pid"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={onSortChange}
+                className="col-pid"
+              />
+              <SortableHeader
+                label="TID"
+                column="tid"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={onSortChange}
+                className="col-tid"
+              />
               <th className="col-message">Nachricht</th>
             </tr>
           </thead>

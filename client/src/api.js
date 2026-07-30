@@ -108,8 +108,21 @@ export function getFiles({ source } = {}) {
   return get("/files", { source });
 }
 
-export function getStats({ from, to, fromTime, toTime, source, service, level, search, pid, tid } = {}) {
-  return get("/stats", { from, to, fromTime, toTime, source, service, level, search, pid, tid });
+export function getStats({
+  from,
+  to,
+  fromTime,
+  toTime,
+  source,
+  service,
+  level,
+  search,
+  exclude,
+  excludeMode,
+  pid,
+  tid,
+} = {}) {
+  return get("/stats", { from, to, fromTime, toTime, source, service, level, search, exclude, excludeMode, pid, tid });
 }
 
 export function getLogs({
@@ -119,11 +132,15 @@ export function getLogs({
   toTime,
   level,
   search,
+  exclude,
+  excludeMode,
   pid,
   tid,
   service,
   source,
   servicePairs,
+  sortBy,
+  sortDir,
   page,
   pageSize,
 } = {}) {
@@ -134,11 +151,15 @@ export function getLogs({
     toTime,
     level,
     search,
+    exclude,
+    excludeMode,
     pid,
     tid,
     service,
     source,
     servicePairs,
+    sortBy,
+    sortDir,
     page,
     pageSize,
   });
@@ -148,8 +169,8 @@ export function getSummary() {
   return get("/summary");
 }
 
-export function getMessageOccurrences({ message, scope, mode, sourceId, service, page, pageSize } = {}) {
-  return get("/message-occurrences", { message, scope, mode, sourceId, service, page, pageSize });
+export function getMessageOccurrences({ message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize } = {}) {
+  return get("/message-occurrences", { message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize });
 }
 
 export function getSettings() {

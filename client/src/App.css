@@ -402,6 +402,46 @@
   width: 190px;
 }
 
+.exclude-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exclude-field input {
+  width: 190px;
+}
+
+.exclude-mode-toggle {
+  display: flex;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.exclude-mode-chip {
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border: none;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.exclude-mode-chip:not(:first-child) {
+  border-left: 1px solid var(--border);
+}
+
+.exclude-mode-chip.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .time-input {
   width: 92px;
 }
@@ -806,6 +846,51 @@
   background: var(--code-bg);
   position: sticky;
   top: 0;
+}
+
+.th-sortable {
+  padding: 0 !important;
+}
+
+.sortable-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.sortable-header:hover,
+.sortable-header.active {
+  color: var(--text-h);
+}
+
+.sort-icon {
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.sortable-header:hover .sort-icon {
+  opacity: 0.5;
+}
+
+.sort-icon.visible {
+  opacity: 1;
+}
+
+.sort-icon.asc {
+  transform: rotate(180deg);
 }
 
 .log-table tbody tr {

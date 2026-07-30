@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getLogs } from "../api";
 import { SearchIcon, CloseIcon } from "./icons";
 import LogTable from "./LogTable";
+import useSort from "../useSort";
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -20,6 +21,7 @@ export default function SearchPage({ sources, files }) {
   const [selectedServiceKeys, setSelectedServiceKeys] = useState(() => new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const { sortBy, sortDir, toggleSort } = useSort();
   const [results, setResults] = useState({ entries: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -66,7 +68,7 @@ export default function SearchPage({ sources, files }) {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQuery, selectedSourceIds, selectedServiceKeys, pageSize]);
+  }, [debouncedQuery, selectedSourceIds, selectedServiceKeys, pageSize, sortBy, sortDir]);
 
   const sourceParam = selectedSourceIds.size ? Array.from(selectedSourceIds).join(",") : undefined;
   const servicePairsParam = selectedServiceKeys.size
@@ -85,13 +87,15 @@ export default function SearchPage({ sources, files }) {
       search: debouncedQuery,
       source: sourceParam,
       servicePairs: servicePairsParam,
+      sortBy,
+      sortDir,
       page,
       pageSize,
     })
       .then(setResults)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [debouncedQuery, sourceParam, servicePairsParam, page, pageSize]);
+  }, [debouncedQuery, sourceParam, servicePairsParam, sortBy, sortDir, page, pageSize]);
 
   function toggleSource(id) {
     setSelectedSourceIds((prev) => {
@@ -200,6 +204,9 @@ export default function SearchPage({ sources, files }) {
           showService
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={toggleSort}
         />
       ) : (
         <div className="chart-card">
