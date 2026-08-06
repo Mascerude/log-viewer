@@ -112,6 +112,15 @@ Alle Quellen werden gemeinsam über die Sidebar navigierbar: pro Quelle
 werden die darin gefundenen Services (aus den Dateinamen geparst) als
 Unterpunkte aufgelistet.
 
+Quellen lassen sich außerdem zu **Gruppen** zusammenfassen (aufklappbar in
+der Sidebar) und sowohl Quellen als auch Gruppen per Drag & Drop
+umsortieren. Eine Quelle kann ein **Ablaufdatum** bekommen — praktisch für
+temporäre Einsätze, sie verschwindet danach automatisch (aus Sidebar,
+Suche, allem) ohne Serverneustart. Optional lässt sich pro Quelle und
+sogar pro einzelnem Service ein **eigenes** Aktualisierungsintervall
+setzen, das den globalen Wert überschreibt (siehe unten,
+"Automatische Aktualisierung").
+
 ## Server (⚙ Einstellungen)
 
 Server sind eine **eigenständige, von den Log-Quellen komplett unabhängige**
@@ -135,27 +144,90 @@ Zeigt die Gesamtzahl aller Fehler/Fatal-Einträge der letzten rollierenden
 24 Stunden (Balkendiagramm pro Service), sowie den Server-Status aller
 konfigurierten Server samt ihrer Services.
 
+## Suche (globale Suche)
+
+Eigener Sidebar-Punkt oberhalb von "Einstellungen": durchsucht **alle**
+Quellen und Services auf einmal per Volltextsuche, ohne Zeitraumbegrenzung.
+Wahlweise auf bestimmte Quellen und/oder Services einschränken (die
+Auswahl-Chips brechen bei Platzmangel automatisch in eine neue Zeile um).
+Heißt ein Service in mehreren Quellen gleich, wird der Quellenname in
+Klammern ergänzt, damit die Auswahl eindeutig bleibt — die Filterung
+selbst bleibt dabei exakt auf die jeweilige Quelle+Service-Kombination
+beschränkt.
+
 ## Service-Ansicht
 
 Klick auf einen Service in der Sidebar öffnet dessen Log-Tabelle und
-Tages-Diagramm, gefiltert nach Zeitraum, Level, Volltext, PID/TID. Die
-Ansicht aktualisiert sich automatisch im konfigurierbaren Intervall
-(Einstellungen → "Automatische Aktualisierung", Standard 30s) und lässt
-sich jederzeit manuell per Klick sofort neu laden.
+Tages-Diagramm (bidirektional synchron: Filter ändert das Diagramm, Klick
+auf einen Balken setzt Tag & Level als Filter). Verfügbare Filter:
+
+- **Zeitraum** inklusive Uhrzeit (von/bis), in einem gemeinsamen Popover
+- **Level** (Debug/Info/Warning/Error/Fatal)
+- **PID** / **TID**
+- **Suche** (Volltext, enthält)
+- **Ausschließen** — beliebig viele Begriffe als Chips, je nach Modus
+  "Enthält" oder "Exakt"
+
+Die Log-Tabelle:
+
+- Spalten **Zeitstempel/PID/TID sortierbar** (auf-/absteigend)
+- **Seitengröße** frei wählbar (20/50/100/200 oder eigener Wert)
+- **"Gehe zu Seite"**-Feld, springt automatisch nach einer konfigurierbaren
+  Pause ohne weitere Eingabe (Einstellungen → "Manuelle Seitenauswahl",
+  bis zu 2 Nachkommastellen, Standard 1,5s)
+- **Mehrfachauswahl** (Strg/Ctrl+Klick, bis zu 5 Einträge) zum
+  Nebeneinander-Vergleichen aller Felder
+- **"Nachricht suchen"** je Eintrag: findet weitere Vorkommen derselben
+  Nachricht (exakt oder "ähnlich" — Zahlen/IDs ignoriert), wahlweise
+  beschränkt auf denselben Service, dieselbe Quelle oder global, inkl.
+  24h/3-Tage/7-Tage/Gesamt-Zählung; Treffer lassen sich direkt vergleichen
+- **Kopieren**: "Für Support-Ticket kopieren" (formatiert für Azure DevOps
+  oder als Klartext) sowie ein eigener Button nur für die Nachricht
+- **Als PDF exportieren**: aktuelle Seite, ein Seitenbereich oder alle
+  Treffer — als echte, tabellenförmige PDF-Datei direkt heruntergeladen
+  (Dateiname automatisch aus Quelle, Service, Levels und Zeitraum
+  zusammengesetzt)
+
+Die Ansicht aktualisiert sich automatisch im konfigurierbaren Intervall und
+lässt sich jederzeit manuell per Klick sofort neu laden. Das Intervall gilt
+global (Einstellungen → "Automatische Aktualisierung", Standard 30s,
+mindestens 1s, bis zu 2 Nachkommastellen), lässt sich aber pro Quelle und
+sogar pro einzelnem Service überschreiben — Priorität: Service-Override >
+Quellen-Override > globaler Wert.
 
 ## Features im Überblick
 
 - Mehrere benannte Log-Quellen (Ordner), einzeln hinzufüg-/umbenenn-/
-  entfernbar
+  entfernbar, per Drag & Drop sortierbar, zu Gruppen zusammenfassbar,
+  optional mit Ablaufdatum (temporäre Quellen)
 - Eigenständige Server-Überwachung (Ping) mit beliebig vielen Services pro
-  Server (TCP-Port-Check), komplett unabhängig von den Log-Quellen
+  Server (`sc query`), komplett unabhängig von den Log-Quellen
 - Sidebar-Navigation: Quelle → Service, direkt aus den vorhandenen
-  Dateien abgeleitet
+  Dateien abgeleitet, scrollbar und einklappbar
 - Startseite: Fehler der letzten 24h gesamt + pro Service, Server-Status
+- Globale Suche über alle Quellen/Services hinweg, mit Einschränkung und
+  automatischer Namens-Disambiguierung bei Kollisionen
 - Modernes, für Light/Dark-Mode optimiertes Design
-- Service-Ansicht: Tages-Diagramm, Tabelle, Filter (Zeitraum, Level, Suche,
-  PID, TID), automatische + manuelle Aktualisierung
+- Service-Ansicht: Tages-Diagramm (bidirektional mit Filtern synchron),
+  Tabelle, Filter (Zeitraum inkl. Uhrzeit, Level, PID, TID, Suche,
+  Ausschließen), sortierbare Spalten, wählbare Seitengröße,
+  "Gehe zu Seite", automatische + manuelle Aktualisierung
+- Automatisches Aktualisierungsintervall global, pro Quelle oder pro
+  Service einstellbar (mit Fallback-Kette und Nachkommastellen)
+- "Nachricht suchen": weitere Vorkommen derselben (oder ähnlichen)
+  Nachricht finden, mit Zeitfenster-Statistik
+- Mehrfachauswahl & Seite-an-Seite-Vergleich von bis zu 5 Log-Einträgen
+- Kopieren für Support-Tickets (Azure DevOps-formatiert oder Klartext)
+- PDF-Export der Log-Tabelle (aktuelle Seite/Bereich/alle Treffer) als
+  direkter Datei-Download
 - Mehrzeilige Nachrichten (Stacktraces, Trace-Suspended-Footer) werden
-  korrekt der zugehörigen Log-Zeile zugeordnet
+  korrekt der zugehörigen Log-Zeile zugeordnet und farblich hervorgehoben
+- UTF-16LE-Dateien (mit oder ohne BOM) werden automatisch erkannt
 - Änderungen an den Log-Dateien werden automatisch erkannt (Cache
   invalidiert sich über Dateigröße/Änderungsdatum)
+
+## Präsentation
+
+`praesentation.html` ist eine eigenständige, offline lauffähige
+Präsentation zur Vorstellung des Tools (mit echten Screenshots) — einfach
+im Browser öffnen, mit Pfeiltasten/Leertaste/Klick durchblättern.
