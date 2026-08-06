@@ -36,8 +36,8 @@ export function addSource({ name, path, expiresAt, groupId }) {
   return send("POST", "/sources", { name, path, expiresAt, groupId });
 }
 
-export function updateSource(id, { name, path, expiresAt, groupId }) {
-  return send("PUT", `/sources/${id}`, { name, path, expiresAt, groupId });
+export function updateSource(id, { name, path, expiresAt, groupId, refreshIntervalSeconds }) {
+  return send("PUT", `/sources/${id}`, { name, path, expiresAt, groupId, refreshIntervalSeconds });
 }
 
 export function deleteSource(id) {
@@ -46,6 +46,10 @@ export function deleteSource(id) {
 
 export function reorderSources(order) {
   return send("PUT", "/sources/reorder", { order });
+}
+
+export function updateServiceRefreshInterval(sourceId, { service, refreshIntervalSeconds }) {
+  return send("PUT", `/sources/${sourceId}/service-settings`, { service, refreshIntervalSeconds });
 }
 
 export function getGroups() {
@@ -177,6 +181,6 @@ export function getSettings() {
   return get("/settings");
 }
 
-export function updateSettings({ refreshIntervalSeconds }) {
-  return send("PUT", "/settings", { refreshIntervalSeconds });
+export function updateSettings({ refreshIntervalSeconds, goToPageDelaySeconds }) {
+  return send("PUT", "/settings", { refreshIntervalSeconds, goToPageDelaySeconds });
 }

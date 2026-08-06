@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   addSource,
   deleteSource,
   updateSource,
   reorderSources,
+  updateServiceRefreshInterval,
   addGroup,
   updateGroup,
   deleteGroup,
@@ -79,12 +80,76 @@ function DraggableRow({ id, isDragging, onDragStart, onDragOver, onDragEnd, chil
   );
 }
 
-function SourceRow({ source, fileCount, groups, onChanged }) {
+// One row of the "Service-Refresh-Overrides" list inside an expanded source
+// — each service saves its own override independently (on blur/Enter) rather
+// than through the source's main Speichern button, since it's a separate API
+// call keyed by service name.
+function ServiceRefreshRow({ sourceId, service, value, sourceOverride, globalDefault, onChanged }) {
+  const fallback = sourceOverride ?? globalDefault;
+  const fallbackOrigin = sourceOverride != null ? "von der Quelle geerbt" : "global";
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setDraft(value != null ? String(value) : "");
+  }, [value]);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    if (trimmed === (value != null ? String(value) : "")) return;
+    const num = trimmed === "" ? null : Number(trimmed);
+    if (num !== null && (!Number.isFinite(num) || num < 1)) {
+      setError("Mindestens 1 Sekunde.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await updateServiceRefreshInterval(sourceId, { service, refreshIntervalSeconds: num });
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="service-refresh-row">
+      <span className="service-refresh-name">{service}</span>
+      <input
+        type="number"
+        min="1"
+        step="0.1"
+        placeholder={String(fallback)}
+        title={`Kein eigener Wert: nutzt ${fallback}s (${fallbackOrigin})`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        disabled={saving}
+      />
+      <span className="service-refresh-unit">s</span>
+      {error && <span className="settings-result settings-error service-refresh-error">{error}</span>}
+    </div>
+  );
+}
+
+function SourceRow({ source, fileCount, services, groups, globalRefreshIntervalSeconds, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(source.name);
   const [path, setPath] = useState(source.path);
   const [expiresAt, setExpiresAt] = useState(source.expiresAt || "");
   const [groupId, setGroupId] = useState(source.groupId || "");
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(
+    source.refreshIntervalSeconds != null ? String(source.refreshIntervalSeconds) : ""
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -93,7 +158,13 @@ function SourceRow({ source, fileCount, groups, onChanged }) {
     setSaving(true);
     setError(null);
     try {
-      await updateSource(source.id, { name, path, expiresAt, groupId });
+      await updateSource(source.id, {
+        name,
+        path,
+        expiresAt,
+        groupId,
+        refreshIntervalSeconds: refreshIntervalSeconds === "" ? null : Number(refreshIntervalSeconds),
+      });
       setEditing(false);
       onChanged();
     } catch (err) {
@@ -133,6 +204,38 @@ function SourceRow({ source, fileCount, groups, onChanged }) {
             </select>
           </label>
         )}
+        <label
+          className="source-expiry-field"
+          title="Optional. Überschreibt für diese Quelle das globale Aktualisierungsintervall."
+        >
+          Refresh-Intervall (Sekunden, optional)
+          <input
+            type="number"
+            min="1"
+            step="0.1"
+            placeholder={`Global (${globalRefreshIntervalSeconds}s)`}
+            value={refreshIntervalSeconds}
+            onChange={(e) => setRefreshIntervalSeconds(e.target.value)}
+          />
+        </label>
+
+        {services.length > 0 && (
+          <div className="service-refresh-list">
+            <span className="service-refresh-list-label">Je Service überschreiben (optional)</span>
+            {services.map((svc) => (
+              <ServiceRefreshRow
+                key={svc}
+                sourceId={source.id}
+                service={svc}
+                value={source.serviceRefreshIntervals?.[svc] ?? null}
+                sourceOverride={source.refreshIntervalSeconds}
+                globalDefault={globalRefreshIntervalSeconds}
+                onChanged={onChanged}
+              />
+            ))}
+          </div>
+        )}
+
         <div className="source-row-actions">
           <button type="submit" disabled={saving}>
             {saving ? "Speichert..." : "Speichern"}
@@ -155,6 +258,11 @@ function SourceRow({ source, fileCount, groups, onChanged }) {
           {source.expiresAt && (
             <span className="expiry-badge" title="Läuft automatisch ab">
               läuft ab {formatExpiryDate(source.expiresAt)}
+            </span>
+          )}
+          {source.refreshIntervalSeconds != null && (
+            <span className="refresh-badge" title="Eigenes Aktualisierungsintervall für diese Quelle">
+              alle {source.refreshIntervalSeconds}s
             </span>
           )}
         </span>
@@ -636,7 +744,8 @@ function RefreshIntervalCard({ refreshIntervalSeconds, onChanged }) {
     <div className="settings-card">
       <h2>Automatische Aktualisierung</h2>
       <p className="chart-subtitle">
-        Wie oft die Service-Ansicht Diagramm und Tabelle im Hintergrund neu lädt.
+        Wie oft die Service-Ansicht Diagramm und Tabelle im Hintergrund neu lädt. Gilt als
+        Standard, sofern für eine Quelle oder einen Service kein eigenes Intervall gesetzt ist.
       </p>
       <form onSubmit={handleSave} className="settings-form">
         <label htmlFor="refresh-interval">Intervall (Sekunden)</label>
@@ -644,8 +753,58 @@ function RefreshIntervalCard({ refreshIntervalSeconds, onChanged }) {
           <input
             id="refresh-interval"
             type="number"
-            min="5"
-            step="5"
+            min="1"
+            step="1"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={saving}>
+            {saving ? "Speichert..." : "Speichern"}
+          </button>
+        </div>
+      </form>
+      {result && <div className={`settings-result settings-${result.type}`}>{result.text}</div>}
+    </div>
+  );
+}
+
+function GoToPageDelayCard({ goToPageDelaySeconds, onChanged }) {
+  const [value, setValue] = useState(goToPageDelaySeconds);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    setResult(null);
+    try {
+      const updated = await updateSettings({ goToPageDelaySeconds: Number(value) });
+      onChanged(updated.goToPageDelaySeconds);
+      setResult({ type: "success", text: "Gespeichert." });
+    } catch (err) {
+      setResult({ type: "error", text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Manuelle Seitenauswahl</h2>
+      <p className="chart-subtitle">
+        In Tabellen springt "Seite ... von ..." automatisch zur eingegebenen Seite, sobald für
+        diese Zeit nichts mehr eingegeben wurde.
+      </p>
+      <form onSubmit={handleSave} className="settings-form">
+        <label htmlFor="goto-delay">Verzögerung (Sekunden, bis zu 2 Nachkommastellen)</label>
+        <div className="source-add-fields">
+          <input
+            id="goto-delay"
+            type="number"
+            min="0"
+            max="30"
+            step="0.01"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             required
@@ -664,11 +823,14 @@ export default function SettingsPage({
   sources,
   groups,
   fileCounts,
+  servicesBySource,
   servers,
   refreshIntervalSeconds,
+  goToPageDelaySeconds,
   onChanged,
   onServersChanged,
   onRefreshIntervalChanged,
+  onGoToPageDelayChanged,
   onBack,
 }) {
   const [name, setName] = useState("");
@@ -727,7 +889,14 @@ export default function SettingsPage({
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <SourceRow source={s} fileCount={fileCounts[s.id]} groups={groups} onChanged={onChanged} />
+              <SourceRow
+                source={s}
+                fileCount={fileCounts[s.id]}
+                services={servicesBySource[s.id] || []}
+                groups={groups}
+                globalRefreshIntervalSeconds={refreshIntervalSeconds}
+                onChanged={onChanged}
+              />
             </DraggableRow>
           ))}
         </div>
@@ -778,6 +947,8 @@ export default function SettingsPage({
       <ServersCard servers={servers} onChanged={onServersChanged} />
 
       <RefreshIntervalCard refreshIntervalSeconds={refreshIntervalSeconds} onChanged={onRefreshIntervalChanged} />
+
+      <GoToPageDelayCard goToPageDelaySeconds={goToPageDelaySeconds} onChanged={onGoToPageDelayChanged} />
 
       <div className="settings-actions settings-page-actions">
         <button type="button" className="secondary" onClick={onBack}>

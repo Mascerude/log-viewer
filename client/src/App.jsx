@@ -5,6 +5,7 @@ import HomePage from "./components/HomePage";
 import SearchPage from "./components/SearchPage";
 import ServiceView from "./components/ServiceView";
 import SettingsPage from "./components/SettingsPage";
+import { SettingsProvider } from "./settingsContext";
 import "./App.css";
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   const [servers, setServers] = useState([]);
   const [files, setFiles] = useState([]);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(30);
+  const [goToPageDelaySeconds, setGoToPageDelaySeconds] = useState(1.5);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [summary, setSummary] = useState(null);
@@ -73,7 +75,10 @@ export default function App() {
     refreshServers();
     refreshFiles();
     getSettings()
-      .then((s) => setRefreshIntervalSeconds(s.refreshIntervalSeconds))
+      .then((s) => {
+        setRefreshIntervalSeconds(s.refreshIntervalSeconds);
+        if (s.goToPageDelaySeconds != null) setGoToPageDelaySeconds(s.goToPageDelaySeconds);
+      })
       .catch(() => {});
   }, [refreshSources, refreshGroups, refreshServers, refreshFiles]);
 
@@ -126,6 +131,18 @@ export default function App() {
     return counts;
   }, [files]);
 
+  const servicesBySource = useMemo(() => {
+    const map = new Map();
+    for (const f of files) {
+      if (!f.service) continue;
+      if (!map.has(f.sourceId)) map.set(f.sourceId, new Set());
+      map.get(f.sourceId).add(f.service);
+    }
+    const result = {};
+    for (const [sourceId, set] of map) result[sourceId] = Array.from(set).sort();
+    return result;
+  }, [files]);
+
   function goHome() {
     setView({ name: "home" });
   }
@@ -140,58 +157,64 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        sources={sources}
-        groups={groups}
-        files={files}
-        view={view}
-        onSelectHome={goHome}
-        onSelectService={goService}
-        onSelectSearch={goSearch}
-        onSelectSettings={goSettings}
-      />
-      <div className="main-content">
-        <div className="app">
-          {view.name === "home" && (
-            <HomePage
-              summary={summary}
-              loading={summaryLoading}
-              error={summaryError}
-              updatedAt={summaryUpdatedAt}
-              onRefresh={refreshSummary}
-              onSelectService={goService}
-            />
-          )}
+    <SettingsProvider value={{ goToPageDelaySeconds }}>
+      <div className="app-shell">
+        <Sidebar
+          sources={sources}
+          groups={groups}
+          files={files}
+          view={view}
+          onSelectHome={goHome}
+          onSelectService={goService}
+          onSelectSearch={goSearch}
+          onSelectSettings={goSettings}
+        />
+        <div className="main-content">
+          <div className="app">
+            {view.name === "home" && (
+              <HomePage
+                summary={summary}
+                loading={summaryLoading}
+                error={summaryError}
+                updatedAt={summaryUpdatedAt}
+                onRefresh={refreshSummary}
+                onSelectService={goService}
+              />
+            )}
 
-          {view.name === "search" && <SearchPage sources={sources} files={files} />}
+            {view.name === "search" && <SearchPage sources={sources} files={files} />}
 
-          {view.name === "service" && (
-            <ServiceView
-              key={`${view.sourceId}:${view.service}`}
-              sourceId={view.sourceId}
-              service={view.service}
-              sourceName={view.sourceName}
-              files={files}
-              refreshIntervalSeconds={refreshIntervalSeconds}
-            />
-          )}
+            {view.name === "service" && (
+              <ServiceView
+                key={`${view.sourceId}:${view.service}`}
+                sourceId={view.sourceId}
+                service={view.service}
+                sourceName={view.sourceName}
+                source={sources.find((s) => s.id === view.sourceId)}
+                files={files}
+                refreshIntervalSeconds={refreshIntervalSeconds}
+              />
+            )}
 
-          {view.name === "settings" && (
-            <SettingsPage
-              sources={sources}
-              groups={groups}
-              fileCounts={fileCounts}
-              servers={servers}
-              refreshIntervalSeconds={refreshIntervalSeconds}
-              onChanged={handleSourcesChanged}
-              onServersChanged={handleServersChanged}
-              onRefreshIntervalChanged={setRefreshIntervalSeconds}
-              onBack={goHome}
-            />
-          )}
+            {view.name === "settings" && (
+              <SettingsPage
+                sources={sources}
+                groups={groups}
+                fileCounts={fileCounts}
+                servicesBySource={servicesBySource}
+                servers={servers}
+                refreshIntervalSeconds={refreshIntervalSeconds}
+                goToPageDelaySeconds={goToPageDelaySeconds}
+                onChanged={handleSourcesChanged}
+                onServersChanged={handleServersChanged}
+                onRefreshIntervalChanged={setRefreshIntervalSeconds}
+                onGoToPageDelayChanged={setGoToPageDelaySeconds}
+                onBack={goHome}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </SettingsProvider>
   );
 }

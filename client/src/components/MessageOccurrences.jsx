@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getMessageOccurrences } from "../api";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
@@ -7,6 +7,8 @@ import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
 import PageSizeSelect from "./PageSizeSelect";
 import SortableHeader from "./SortableHeader";
+import GoToPage from "./GoToPage";
+import ExportMenu from "./ExportMenu";
 import useCompareSelection from "../useCompareSelection";
 import useSort from "../useSort";
 
@@ -69,6 +71,14 @@ export default function MessageOccurrences({ entry }) {
   const showMessage = mode === "similar";
   const colCount = 4 + (showSource ? 1 : 0) + (showService ? 1 : 0) + (showMessage ? 1 : 0);
 
+  const fetchExportPage = useCallback(
+    (pageNum) =>
+      getMessageOccurrences({ message, scope, mode, sourceId, service, sortBy, sortDir, page: pageNum, pageSize }).then(
+        (result) => result.entries
+      ),
+    [message, scope, mode, sourceId, service, sortBy, sortDir, pageSize]
+  );
+
   return (
     <div className="occurrence-panel">
       <div className="occurrence-toggle-row">
@@ -124,7 +134,21 @@ export default function MessageOccurrences({ entry }) {
         ))}
       </div>
 
-      <CompareToolbar count={selected.size} onClear={clear} onCompare={() => setCompareOpen(true)} />
+      <div className="occurrence-table-header">
+        <CompareToolbar count={selected.size} onClear={clear} onCompare={() => setCompareOpen(true)} />
+        {counts && (
+          <ExportMenu
+            entries={entries}
+            page={page}
+            pageCount={pageCount}
+            total={counts.total}
+            showSource={showSource}
+            showService={showService}
+            title="Nachricht-Vorkommen"
+            onFetchPage={fetchExportPage}
+          />
+        )}
+      </div>
 
       <div className="table-scroll">
         <table className="log-table occurrence-table">
@@ -185,9 +209,7 @@ export default function MessageOccurrences({ entry }) {
             <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               <ChevronLeftIcon /> Zurück
             </button>
-            <span>
-              Seite {page} von {pageCount}
-            </span>
+            <GoToPage page={page} pageCount={pageCount} onChange={setPage} />
             <button type="button" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
               Weiter <ChevronRightIcon />
             </button>

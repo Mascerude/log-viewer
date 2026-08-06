@@ -6,17 +6,21 @@ import crypto from "crypto";
 import { execFile } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import PDFDocument from "pdfkit";
 import { listLogFiles, parseLogFile } from "./parser.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Raised above the 100kb default: a full-export PDF request bundles every
+// matched entry (including long multi-line stack traces) in one JSON body.
+app.use(express.json({ limit: "50mb" }));
 
 const PORT = process.env.PORT || 4000;
 const CONFIG_PATH = path.resolve("config.json");
 const DEFAULT_REFRESH_SECONDS = 30;
+const DEFAULT_GOTO_PAGE_DELAY_SECONDS = 1.5;
 const MONITOR_INTERVAL_MS = 30_000;
 
 // Production build of the client (created by `npm run build` in client/), served
@@ -44,17 +48,19 @@ function loadConfig() {
       servers: Array.isArray(parsed.servers) ? parsed.servers : null,
       refreshIntervalSeconds:
         typeof parsed.refreshIntervalSeconds === "number" ? parsed.refreshIntervalSeconds : null,
+      goToPageDelaySeconds:
+        typeof parsed.goToPageDelaySeconds === "number" ? parsed.goToPageDelaySeconds : null,
     };
   } catch {
     // no config.json yet, or unreadable — fall through to defaults
   }
-  return { sources: null, groups: null, servers: null, refreshIntervalSeconds: null };
+  return { sources: null, groups: null, servers: null, refreshIntervalSeconds: null, goToPageDelaySeconds: null };
 }
 
 function saveConfig() {
   fs.writeFileSync(
     CONFIG_PATH,
-    JSON.stringify({ sources, groups, servers, refreshIntervalSeconds }, null, 2),
+    JSON.stringify({ sources, groups, servers, refreshIntervalSeconds, goToPageDelaySeconds }, null, 2),
     "utf-8"
   );
 }
@@ -74,6 +80,7 @@ let groups = loaded.groups || [];
 let servers = loaded.servers || [];
 for (const s of servers) if (!Array.isArray(s.services)) s.services = [];
 let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SECONDS;
+let goToPageDelaySeconds = loaded.goToPageDelaySeconds ?? DEFAULT_GOTO_PAGE_DELAY_SECONDS;
 pruneExpiredSources();
 saveConfig();
 
@@ -91,6 +98,8 @@ function sourceInfo(s) {
     exists: fs.existsSync(s.path),
     expiresAt: s.expiresAt || null,
     groupId: s.groupId || null,
+    refreshIntervalSeconds: s.refreshIntervalSeconds ?? null,
+    serviceRefreshIntervals: s.serviceRefreshIntervals || {},
   };
 }
 
@@ -259,11 +268,24 @@ function applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeM
     result = result.filter((e) => e.message.toLowerCase().includes(needle));
   }
   if (exclude) {
-    const needle = String(exclude).toLowerCase();
-    result =
-      excludeMode === "exact"
-        ? result.filter((e) => e.message.toLowerCase() !== needle)
-        : result.filter((e) => !e.message.toLowerCase().includes(needle));
+    // A JSON-encoded array of terms — arbitrarily many, added one at a time
+    // as chips in the filter bar. Malformed input is ignored rather than
+    // erroring, since this feeds a best-effort display filter.
+    let terms = [];
+    try {
+      const parsed = JSON.parse(exclude);
+      if (Array.isArray(parsed)) terms = parsed.filter(Boolean).map((t) => String(t).toLowerCase());
+    } catch {
+      // ignore
+    }
+    if (terms.length > 0) {
+      result = result.filter((e) => {
+        const message = e.message.toLowerCase();
+        return !terms.some((needle) =>
+          excludeMode === "exact" ? message === needle : message.includes(needle)
+        );
+      });
+    }
   }
   return result;
 }
@@ -299,6 +321,17 @@ function loadEntries(files) {
     }
   }
   return entries;
+}
+
+// Validates an optional per-source/service refresh-interval override:
+// null/undefined/"" clears it (falls back to the next level up), otherwise
+// it must be a number >= 1s (same floor as the global setting), rounded to
+// one decimal place.
+function parseOptionalInterval(value) {
+  if (value === null || value === undefined || value === "") return { ok: true, value: null };
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 1) return { ok: false, value: null };
+  return { ok: true, value: Math.round(num * 10) / 10 };
 }
 
 // ---- Sources (named log folders) ----
@@ -367,6 +400,41 @@ app.put("/api/sources/:id", (req, res) => {
     } else {
       delete source.groupId;
     }
+  }
+  if ("refreshIntervalSeconds" in body) {
+    const parsed = parseOptionalInterval(body.refreshIntervalSeconds);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: "Das Intervall muss mindestens 5 Sekunden betragen." });
+    }
+    if (parsed.value === null) delete source.refreshIntervalSeconds;
+    else source.refreshIntervalSeconds = parsed.value;
+  }
+  saveConfig();
+  res.json(sourceInfo(source));
+});
+
+// Per-service override of the auto-refresh interval — services aren't a
+// persisted entity (they're derived from filenames), so this is keyed by
+// name directly rather than through a services sub-resource with its own ids.
+app.put("/api/sources/:id/service-settings", (req, res) => {
+  const source = sources.find((s) => s.id === req.params.id);
+  if (!source) return res.status(404).json({ error: "Quelle nicht gefunden." });
+  const { service, refreshIntervalSeconds } = req.body || {};
+  if (!service || !String(service).trim()) {
+    return res.status(400).json({ error: "service ist erforderlich." });
+  }
+  const parsed = parseOptionalInterval(refreshIntervalSeconds);
+  if (!parsed.ok) {
+    return res.status(400).json({ error: "Das Intervall muss mindestens 5 Sekunden betragen." });
+  }
+  if (parsed.value === null) {
+    if (source.serviceRefreshIntervals) {
+      delete source.serviceRefreshIntervals[service];
+      if (Object.keys(source.serviceRefreshIntervals).length === 0) delete source.serviceRefreshIntervals;
+    }
+  } else {
+    if (!source.serviceRefreshIntervals) source.serviceRefreshIntervals = {};
+    source.serviceRefreshIntervals[service] = parsed.value;
   }
   saveConfig();
   res.json(sourceInfo(source));
@@ -538,17 +606,27 @@ app.delete("/api/servers/:id/services/:serviceId", (req, res) => {
 // ---- App settings ----
 
 app.get("/api/settings", (req, res) => {
-  res.json({ refreshIntervalSeconds });
+  res.json({ refreshIntervalSeconds, goToPageDelaySeconds });
 });
 
 app.put("/api/settings", (req, res) => {
-  const { refreshIntervalSeconds: value } = req.body || {};
-  if (!Number.isFinite(value) || value < 5) {
-    return res.status(400).json({ error: "Das Intervall muss mindestens 5 Sekunden betragen." });
+  const body = req.body || {};
+  if ("refreshIntervalSeconds" in body) {
+    const value = body.refreshIntervalSeconds;
+    if (!Number.isFinite(value) || value < 1) {
+      return res.status(400).json({ error: "Das Intervall muss mindestens 1 Sekunde betragen." });
+    }
+    refreshIntervalSeconds = Math.round(value);
   }
-  refreshIntervalSeconds = Math.round(value);
+  if ("goToPageDelaySeconds" in body) {
+    const value = body.goToPageDelaySeconds;
+    if (!Number.isFinite(value) || value < 0 || value > 30) {
+      return res.status(400).json({ error: "Die Verzögerung muss zwischen 0 und 30 Sekunden liegen." });
+    }
+    goToPageDelaySeconds = Math.round(value * 100) / 100;
+  }
   saveConfig();
-  res.json({ refreshIntervalSeconds });
+  res.json({ refreshIntervalSeconds, goToPageDelaySeconds });
 });
 
 // ---- Log data ----
@@ -679,6 +757,139 @@ app.get("/api/message-occurrences", (req, res) => {
   const pageEntries = entries.slice(start, start + size);
 
   res.json({ entries: pageEntries, counts, page: pageNum, pageSize: size });
+});
+
+const PDF_LEVEL_COLORS = {
+  Fatal: { bg: "#fde2e1", fg: "#9b1c1c" },
+  Error: { bg: "#fde2e1", fg: "#b3261e" },
+  Warning: { bg: "#fff2cc", fg: "#8a6100" },
+  Info: { bg: "#e3f3e6", fg: "#1e7a34" },
+  Debug: { bg: "#eeeeee", fg: "#555555" },
+};
+
+function formatTimestampForPdf(iso) {
+  const [datePart, timePart] = iso.split("T");
+  const [y, m, d] = datePart.split("-");
+  return `${d}.${m}.${y} ${timePart}`;
+}
+
+// Builds the table by hand (pdfkit has no built-in table support): fixed
+// column widths, the message column takes whatever width is left, rows are
+// measured up front so a tall wrapped message can push a page break before
+// it's drawn, and the header re-draws itself on every new page.
+function drawEntriesTable(doc, entries, { title, showSource, showService }) {
+  const left = doc.page.margins.left;
+  const usableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const bottomLimit = doc.page.height - doc.page.margins.bottom;
+
+  const columns = [{ key: "timestamp", label: "Zeitstempel", width: 95 }, { key: "levelName", label: "Level", width: 55 }];
+  if (showSource) columns.push({ key: "sourceName", label: "Quelle", width: 90 });
+  if (showService) columns.push({ key: "service", label: "Service", width: 110 });
+  columns.push({ key: "pid", label: "PID", width: 42 });
+  columns.push({ key: "tid", label: "TID", width: 42 });
+  const fixedWidth = columns.reduce((sum, c) => sum + c.width, 0);
+  columns.push({ key: "message", label: "Nachricht", width: Math.max(150, usableWidth - fixedWidth) });
+  const tableWidth = fixedWidth + columns[columns.length - 1].width;
+
+  function colX(index) {
+    let x = left;
+    for (let i = 0; i < index; i++) x += columns[i].width;
+    return x;
+  }
+
+  function drawHeader(y) {
+    doc.rect(left, y, tableWidth, 18).fill("#f2f2f2");
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#555");
+    columns.forEach((col, i) => {
+      doc.text(col.label.toUpperCase(), colX(i) + 4, y + 6, { width: col.width - 8 });
+    });
+    return y + 18;
+  }
+
+  doc.font("Helvetica-Bold").fontSize(16).fillColor("#111").text(title, left, doc.y);
+  doc.moveDown(0.2);
+  doc
+    .font("Helvetica")
+    .fontSize(9)
+    .fillColor("#555")
+    .text(`${entries.length.toLocaleString("de-DE")} Einträge · exportiert am ${new Date().toLocaleString("de-DE")}`);
+  doc.moveDown(0.6);
+
+  let y = drawHeader(doc.y);
+
+  entries.forEach((e, rowIndex) => {
+    const messageWidth = columns[columns.length - 1].width - 8;
+    doc.font("Courier").fontSize(8);
+    const messageHeight = doc.heightOfString(e.message, { width: messageWidth });
+    const rowHeight = Math.max(20, messageHeight + 10);
+
+    if (y + rowHeight > bottomLimit && y > doc.page.margins.top + 18) {
+      doc.addPage();
+      y = drawHeader(doc.page.margins.top);
+    }
+
+    if (rowIndex % 2 === 1) doc.rect(left, y, tableWidth, rowHeight).fill("#fafafa");
+
+    columns.forEach((col, i) => {
+      const cx = colX(i);
+      if (col.key === "levelName") {
+        const colors = PDF_LEVEL_COLORS[e.levelName] || { bg: "#eee", fg: "#555" };
+        doc.roundedRect(cx + 4, y + 5, col.width - 12, 12, 6).fill(colors.bg);
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(7)
+          .fillColor(colors.fg)
+          .text(e.levelName, cx + 4, y + 8, { width: col.width - 12, align: "center" });
+      } else if (col.key === "message") {
+        doc.font("Courier").fontSize(8).fillColor("#111").text(e.message, cx + 4, y + 5, { width: messageWidth });
+      } else {
+        const mono = col.key === "timestamp" || col.key === "pid" || col.key === "tid";
+        const value = col.key === "timestamp" ? formatTimestampForPdf(e.timestamp) : String(e[col.key] ?? "");
+        doc
+          .font(mono ? "Courier" : "Helvetica")
+          .fontSize(8)
+          .fillColor("#111")
+          .text(value, cx + 4, y + 6, { width: col.width - 8 });
+      }
+    });
+
+    doc.strokeColor("#ddd").lineWidth(0.5);
+    let vx = left;
+    columns.forEach((col) => {
+      doc.moveTo(vx, y).lineTo(vx, y + rowHeight).stroke();
+      vx += col.width;
+    });
+    doc.moveTo(vx, y).lineTo(vx, y + rowHeight).stroke();
+    doc.moveTo(left, y + rowHeight).lineTo(left + tableWidth, y + rowHeight).stroke();
+
+    y += rowHeight;
+  });
+}
+
+// Renders the exact set of entries the client already assembled (current
+// page / a page range / everything — see ExportMenu.jsx) into a real PDF
+// file streamed back as a download, rather than relying on the browser's
+// print-to-PDF dialog.
+app.post("/api/export-pdf", (req, res) => {
+  const { title, filename, showSource, showService, entries } = req.body || {};
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({ error: "entries muss ein Array sein." });
+  }
+
+  const safeTitle = String(title || "Log-Export");
+  const safeFilename = String(filename || safeTitle);
+  const asciiName = safeFilename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "") || "export";
+  const encodedName = encodeURIComponent(safeFilename);
+
+  const doc = new PDFDocument({ margin: 28, size: "A4", layout: "landscape" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${asciiName}.pdf"; filename*=UTF-8''${encodedName}.pdf`
+  );
+  doc.pipe(res);
+  drawEntriesTable(doc, entries, { title: safeTitle, showSource: !!showSource, showService: !!showService });
+  doc.end();
 });
 
 app.get("/api/stats", (req, res) => {

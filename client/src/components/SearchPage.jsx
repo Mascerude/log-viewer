@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getLogs } from "../api";
 import { SearchIcon, CloseIcon } from "./icons";
 import LogTable from "./LogTable";
@@ -96,6 +96,20 @@ export default function SearchPage({ sources, files }) {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [debouncedQuery, sourceParam, servicePairsParam, sortBy, sortDir, page, pageSize]);
+
+  const fetchExportPage = useCallback(
+    (pageNum) =>
+      getLogs({
+        search: debouncedQuery,
+        source: sourceParam,
+        servicePairs: servicePairsParam,
+        sortBy,
+        sortDir,
+        page: pageNum,
+        pageSize,
+      }).then((result) => result.entries),
+    [debouncedQuery, sourceParam, servicePairsParam, sortBy, sortDir, pageSize]
+  );
 
   function toggleSource(id) {
     setSelectedSourceIds((prev) => {
@@ -207,6 +221,7 @@ export default function SearchPage({ sources, files }) {
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={toggleSort}
+          onFetchPage={fetchExportPage}
         />
       ) : (
         <div className="chart-card">

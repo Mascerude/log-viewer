@@ -160,3 +160,12 @@ export function SearchIcon(props) {
     </svg>
   );
 }
+
+export function DownloadIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5v11.5M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M4.5 16.5V19a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2.5" />
+    </svg>
+  );
+}

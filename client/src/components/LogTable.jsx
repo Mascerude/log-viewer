@@ -6,6 +6,8 @@ import CompareEntriesModal from "./CompareEntriesModal";
 import CompareToolbar from "./CompareToolbar";
 import PageSizeSelect from "./PageSizeSelect";
 import SortableHeader from "./SortableHeader";
+import GoToPage from "./GoToPage";
+import ExportMenu from "./ExportMenu";
 import useCompareSelection from "../useCompareSelection";
 import FormattedMessage from "../stackTrace";
 
@@ -29,7 +31,9 @@ export default function LogTable({
   sortBy,
   sortDir,
   onSortChange,
+  onFetchPage,
   title = "Log-Einträge",
+  filename,
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const colCount = 5 + (showSource ? 1 : 0) + (showService ? 1 : 0);
@@ -40,9 +44,22 @@ export default function LogTable({
     <div className="table-card">
       <div className="table-header">
         <h2>{title}</h2>
-        <span className="table-count">
-          {total.toLocaleString("de-DE")} Einträge{loading ? " · lädt..." : ""}
-        </span>
+        <div className="table-header-actions">
+          <span className="table-count">
+            {total.toLocaleString("de-DE")} Einträge{loading ? " · lädt..." : ""}
+          </span>
+          <ExportMenu
+            entries={entries}
+            page={page}
+            pageCount={pageCount}
+            total={total}
+            showSource={showSource}
+            showService={showService}
+            title={title}
+            filename={filename}
+            onFetchPage={onFetchPage}
+          />
+        </div>
       </div>
 
       {error && <div className="table-error">{error}</div>}
@@ -128,9 +145,7 @@ export default function LogTable({
           <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
             <ChevronLeftIcon /> Zurück
           </button>
-          <span>
-            Seite {page} von {pageCount}
-          </span>
+          <GoToPage page={page} pageCount={pageCount} onChange={onPageChange} />
           <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
             Weiter <ChevronRightIcon />
           </button>

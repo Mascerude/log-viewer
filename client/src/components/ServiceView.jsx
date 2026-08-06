@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getLogs, getStats } from "../api";
-import { LEVEL_LETTERS, LEVEL_NAMES_BY_LETTER } from "../levelColors";
+import { LEVEL_LETTERS, LEVEL_NAMES_BY_LETTER, LEVEL_ORDER } from "../levelColors";
 import FilterBar from "./FilterBar";
 import ErrorChart from "./ErrorChart";
 import LogTable from "./LogTable";
@@ -10,7 +10,12 @@ import useSort from "../useSort";
 const ALL_LETTERS = new Set(Object.values(LEVEL_LETTERS));
 const DEFAULT_PAGE_SIZE = 20;
 
-export default function ServiceView({ sourceId, service, sourceName, files, refreshIntervalSeconds }) {
+export default function ServiceView({ sourceId, service, sourceName, source, files, refreshIntervalSeconds }) {
+  // Most specific wins: a per-service override beats a per-source override
+  // beats the global default.
+  const effectiveRefreshIntervalSeconds =
+    source?.serviceRefreshIntervals?.[service] ?? source?.refreshIntervalSeconds ?? refreshIntervalSeconds;
+
   const relevantFiles = useMemo(
     () => files.filter((f) => f.sourceId === sourceId && f.service === service),
     [files, sourceId, service]
@@ -42,13 +47,12 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     toTime: "23:59",
     levels: new Set(ALL_LETTERS),
     search: "",
-    exclude: "",
+    excludeList: [],
     excludeMode: "contains",
     pid: "",
     tid: "",
   }));
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [debouncedExclude, setDebouncedExclude] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { sortBy, sortDir, toggleSort } = useSort();
@@ -64,10 +68,9 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     return () => clearTimeout(t);
   }, [filters.search]);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedExclude(filters.exclude), 300);
-    return () => clearTimeout(t);
-  }, [filters.exclude]);
+  // Exclude terms commit discretely (Enter/blur adds a chip), so no debounce
+  // is needed — just a stable, comparable key for the effect dependencies.
+  const excludeParam = filters.excludeList.length ? JSON.stringify(filters.excludeList) : undefined;
 
   useEffect(() => {
     setPage(1);
@@ -78,7 +81,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     filters.toTime,
     filters.levels,
     debouncedSearch,
-    debouncedExclude,
+    excludeParam,
     filters.excludeMode,
     filters.pid,
     filters.tid,
@@ -89,10 +92,10 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
 
   // Auto-refresh: re-fetch periodically without disturbing the user's filters
   useEffect(() => {
-    if (!refreshIntervalSeconds) return;
-    const id = setInterval(() => setRefreshTick((t) => t + 1), refreshIntervalSeconds * 1000);
+    if (!effectiveRefreshIntervalSeconds) return;
+    const id = setInterval(() => setRefreshTick((t) => t + 1), effectiveRefreshIntervalSeconds * 1000);
     return () => clearInterval(id);
-  }, [refreshIntervalSeconds]);
+  }, [effectiveRefreshIntervalSeconds]);
 
   const levelParam = useMemo(
     () => (filters.levels.size === ALL_LETTERS.size ? undefined : Array.from(filters.levels).join(",")),
@@ -113,7 +116,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       service,
       level: levelParam,
       search: debouncedSearch,
-      exclude: debouncedExclude,
+      exclude: excludeParam,
       excludeMode: filters.excludeMode,
       pid: filters.pid,
       tid: filters.tid,
@@ -127,7 +130,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     filters.toTime,
     levelParam,
     debouncedSearch,
-    debouncedExclude,
+    excludeParam,
     filters.excludeMode,
     filters.pid,
     filters.tid,
@@ -148,7 +151,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
       source: sourceId,
       service,
       search: debouncedSearch,
-      exclude: debouncedExclude,
+      exclude: excludeParam,
       excludeMode: filters.excludeMode,
       pid: filters.pid,
       tid: filters.tid,
@@ -172,7 +175,7 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     sourceId,
     service,
     debouncedSearch,
-    debouncedExclude,
+    excludeParam,
     filters.excludeMode,
     filters.pid,
     filters.tid,
@@ -182,6 +185,64 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
     pageSize,
     refreshTick,
   ]);
+
+  // Reused by the export menu to fetch pages beyond the one currently
+  // loaded, with the exact same filters/sort — just a different page number.
+  const fetchExportPage = useCallback(
+    (pageNum) =>
+      getLogs({
+        from: filters.from,
+        to: filters.to,
+        fromTime: filters.fromTime,
+        toTime: filters.toTime,
+        level: levelParam,
+        source: sourceId,
+        service,
+        search: debouncedSearch,
+        exclude: excludeParam,
+        excludeMode: filters.excludeMode,
+        pid: filters.pid,
+        tid: filters.tid,
+        sortBy,
+        sortDir,
+        page: pageNum,
+        pageSize,
+      }).then((result) => result.entries),
+    [
+      filters.from,
+      filters.to,
+      filters.fromTime,
+      filters.toTime,
+      levelParam,
+      sourceId,
+      service,
+      debouncedSearch,
+      excludeParam,
+      filters.excludeMode,
+      filters.pid,
+      filters.tid,
+      sortBy,
+      sortDir,
+      pageSize,
+    ]
+  );
+
+  // "Quelle_Service_Levels_Zeitraum" download name for the export menu —
+  // built from the same filters currently applied to the table.
+  function formatDateForFilename(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return `${d}.${m}.${y}`;
+  }
+  const levelsLabel =
+    filters.levels.size === ALL_LETTERS.size
+      ? "Alle-Level"
+      : LEVEL_ORDER.filter((name) => filters.levels.has(LEVEL_LETTERS[name])).join("+") || "Kein-Level";
+  const zeitraumLabel =
+    filters.from && filters.to
+      ? `${formatDateForFilename(filters.from)}-${formatDateForFilename(filters.to)}`
+      : "Gesamt";
+  const exportFilename = `${sourceName}_${service}_${levelsLabel}_${zeitraumLabel}`;
 
   function toggleChartLevel(name) {
     const letter = LEVEL_LETTERS[name];
@@ -214,7 +275,9 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
         </div>
         <div className="refresh-info">
           {lastUpdated && <span>Aktualisiert: {lastUpdated.toLocaleTimeString("de-DE")}</span>}
-          {refreshIntervalSeconds > 0 && <span> · automatisch alle {refreshIntervalSeconds}s</span>}
+          {effectiveRefreshIntervalSeconds > 0 && (
+            <span> · automatisch alle {effectiveRefreshIntervalSeconds}s</span>
+          )}
           <button type="button" className="settings-button" onClick={() => setRefreshTick((t) => t + 1)}>
             <RefreshIcon /> Jetzt aktualisieren
           </button>
@@ -243,6 +306,8 @@ export default function ServiceView({ sourceId, service, sourceName, files, refr
         sortBy={sortBy}
         sortDir={sortDir}
         onSortChange={toggleSort}
+        onFetchPage={fetchExportPage}
+        filename={exportFilename}
       />
     </div>
   );

@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { LEVEL_COLORS, LEVEL_LETTERS, LEVEL_ORDER } from "../levelColors";
 import DateRangePicker from "./DateRangePicker";
-import { FilterXIcon } from "./icons";
+import { FilterXIcon, CloseIcon } from "./icons";
 
 export default function FilterBar({ filters, onChange, services, sources, minDate, maxDate }) {
+  const [excludeDraft, setExcludeDraft] = useState("");
+
   function set(patch) {
     onChange({ ...filters, ...patch });
   }
@@ -19,6 +22,27 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
     if (active.has(id)) active.delete(id);
     else active.add(id);
     set({ sources: active });
+  }
+
+  function addExclude() {
+    const term = excludeDraft.trim();
+    if (term && !filters.excludeList.includes(term)) {
+      set({ excludeList: [...filters.excludeList, term] });
+    }
+    setExcludeDraft("");
+  }
+
+  function removeExclude(term) {
+    set({ excludeList: filters.excludeList.filter((t) => t !== term) });
+  }
+
+  function handleExcludeKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addExclude();
+    } else if (e.key === "Backspace" && excludeDraft === "" && filters.excludeList.length > 0) {
+      set({ excludeList: filters.excludeList.slice(0, -1) });
+    }
   }
 
   return (
@@ -130,15 +154,31 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
       </div>
 
       <div className="filter-group filter-group-search">
-        <label htmlFor="exclude">Ausschließen</label>
+        <label htmlFor="exclude">
+          Ausschließen{filters.excludeList.length > 0 && (
+            <span className="filter-group-hint"> ({filters.excludeList.length})</span>
+          )}
+        </label>
         <div className="exclude-field">
-          <input
-            id="exclude"
-            type="text"
-            placeholder="Nachricht ausschließen..."
-            value={filters.exclude}
-            onChange={(e) => set({ exclude: e.target.value })}
-          />
+          <div className="exclude-chip-input">
+            {filters.excludeList.map((term) => (
+              <span className="exclude-chip" key={term}>
+                {term}
+                <button type="button" onClick={() => removeExclude(term)} aria-label={`"${term}" nicht mehr ausschließen`}>
+                  <CloseIcon />
+                </button>
+              </span>
+            ))}
+            <input
+              id="exclude"
+              type="text"
+              placeholder={filters.excludeList.length ? "" : "Nachricht ausschließen, Enter zum Hinzufügen..."}
+              value={excludeDraft}
+              onChange={(e) => setExcludeDraft(e.target.value)}
+              onKeyDown={handleExcludeKeyDown}
+              onBlur={addExclude}
+            />
+          </div>
           <div className="exclude-mode-toggle" role="group" aria-label="Ausschluss-Modus">
             <button
               type="button"
@@ -167,7 +207,8 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
         className="reset-button"
         title="Filter zurücksetzen"
         aria-label="Filter zurücksetzen"
-        onClick={() =>
+        onClick={() => {
+          setExcludeDraft("");
           set({
             from: "",
             to: "",
@@ -176,13 +217,13 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
             levels: new Set(Object.values(LEVEL_LETTERS)),
             sources: new Set((sources || []).map((s) => s.id)),
             search: "",
-            exclude: "",
+            excludeList: [],
             excludeMode: "contains",
             pid: "",
             tid: "",
             service: "",
-          })
-        }
+          });
+        }}
       >
         <FilterXIcon />
       </button>
