@@ -155,6 +155,22 @@ Klammern ergänzt, damit die Auswahl eindeutig bleibt — die Filterung
 selbst bleibt dabei exakt auf die jeweilige Quelle+Service-Kombination
 beschränkt.
 
+Sobald mindestens eine Quelle oder ein Service ausgewählt ist, werden auch
+ohne Suchbegriff sofort alle deren Nachrichten angezeigt — nützlich, um
+einfach nur den gesamten Verlauf einer Auswahl durchzublättern. Für das
+Suchergebnis lässt sich zusätzlich ein eigenes Aktualisierungsintervall in
+Sekunden setzen ("Auto-Aktualisierung"); es gilt nur für diese Suche und
+wird nirgends gespeichert — beim Verlassen der Seite oder Neuladen ist es
+wieder aus.
+
+Über den Schalter "Filter anzeigen" lässt sich zusätzlich dieselbe
+Filterleiste wie in der Service-Ansicht einblenden (Zeitraum inkl. Uhrzeit,
+Level, PID, TID, Ausschließen) — ausgeblendet, bleibt die Suchseite
+aufgeräumt; eingeblendet lässt sich die globale Suche genauso präzise
+eingrenzen wie eine einzelne Service-Ansicht. Auch ein gesetzter Filter
+allein (ganz ohne Suchbegriff oder Quellen-/Service-Auswahl) zeigt bereits
+alle passenden Ergebnisse an.
+
 ## Service-Ansicht
 
 Klick auf einen Service in der Sidebar öffnet dessen Log-Tabelle und
@@ -176,7 +192,12 @@ Die Log-Tabelle:
   Pause ohne weitere Eingabe (Einstellungen → "Manuelle Seitenauswahl",
   bis zu 2 Nachkommastellen, Standard 1,5s)
 - **Mehrfachauswahl** (Strg/Ctrl+Klick, bis zu 5 Einträge) zum
-  Nebeneinander-Vergleichen aller Felder
+  Nebeneinander-Vergleichen aller Felder — zwei unabhängige Schalter im
+  Vergleichsfenster: einer hebt abweichende Felder farblich hervor
+  (Zeitstempel, Level, Quelle, Service, PID, TID, Datei, Nachricht,
+  standardmäßig aktiv), der andere vergleicht die Nachrichtentexte
+  wortweise miteinander und markiert genau die abweichenden Wörter
+  (standardmäßig aus)
 - **"Nachricht suchen"** je Eintrag: findet weitere Vorkommen derselben
   Nachricht (exakt oder "ähnlich" — Zahlen/IDs ignoriert), wahlweise
   beschränkt auf denselben Service, dieselbe Quelle oder global, inkl.
@@ -206,7 +227,11 @@ Quellen-Override > globaler Wert.
   Dateien abgeleitet, scrollbar und einklappbar
 - Startseite: Fehler der letzten 24h gesamt + pro Service, Server-Status
 - Globale Suche über alle Quellen/Services hinweg, mit Einschränkung und
-  automatischer Namens-Disambiguierung bei Kollisionen
+  automatischer Namens-Disambiguierung bei Kollisionen; zeigt bei reiner
+  Quellen-/Service-Auswahl auch ohne Suchbegriff alle Nachrichten an, mit
+  eigenem, nicht gespeichertem Aktualisierungsintervall für das Ergebnis;
+  optional ein-/ausblendbare Filterleiste (Zeitraum, Level, PID, TID,
+  Ausschließen) wie in der Service-Ansicht
 - Modernes, für Light/Dark-Mode optimiertes Design
 - Service-Ansicht: Tages-Diagramm (bidirektional mit Filtern synchron),
   Tabelle, Filter (Zeitraum inkl. Uhrzeit, Level, PID, TID, Suche,
@@ -216,7 +241,9 @@ Quellen-Override > globaler Wert.
   Service einstellbar (mit Fallback-Kette und Nachkommastellen)
 - "Nachricht suchen": weitere Vorkommen derselben (oder ähnlichen)
   Nachricht finden, mit Zeitfenster-Statistik
-- Mehrfachauswahl & Seite-an-Seite-Vergleich von bis zu 5 Log-Einträgen
+- Mehrfachauswahl & Seite-an-Seite-Vergleich von bis zu 5 Log-Einträgen, mit
+  optionaler farblicher Hervorhebung der abweichenden Felder sowie
+  wortweisem Vergleich der Nachrichtentexte
 - Kopieren für Support-Tickets (Azure DevOps-formatiert oder Klartext)
 - PDF-Export der Log-Tabelle (aktuelle Seite/Bereich/alle Treffer) als
   direkter Datei-Download

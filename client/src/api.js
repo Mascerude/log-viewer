@@ -177,6 +177,42 @@ export function getMessageOccurrences({ message, scope, mode, sourceId, service,
   return get("/message-occurrences", { message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize });
 }
 
+export function getSavedSearchFolders() {
+  return get("/saved-search-folders");
+}
+
+export function createSavedSearchFolder({ name }) {
+  return send("POST", "/saved-search-folders", { name });
+}
+
+export function deleteSavedSearchFolder(id) {
+  return send("DELETE", `/saved-search-folders/${id}`);
+}
+
+export function getSavedSearches() {
+  return get("/saved-searches");
+}
+
+export function createSavedSearch({ name, folderId, query, sources, services, filters, refreshIntervalSeconds }) {
+  return send("POST", "/saved-searches", { name, folderId, query, sources, services, filters, refreshIntervalSeconds });
+}
+
+export function updateSavedSearch(id, { name, folderId, query, sources, services, filters, refreshIntervalSeconds }) {
+  return send("PUT", `/saved-searches/${id}`, {
+    name,
+    folderId,
+    query,
+    sources,
+    services,
+    filters,
+    refreshIntervalSeconds,
+  });
+}
+
+export function deleteSavedSearch(id) {
+  return send("DELETE", `/saved-searches/${id}`);
+}
+
 export function getSettings() {
   return get("/settings");
 }

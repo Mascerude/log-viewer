@@ -1,10 +1,76 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { HomeIcon, SettingsIcon, SearchIcon, ChevronRightIcon, FolderIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
   return `bis ${d}.${m}.`;
+}
+
+const WIDTH_STORAGE_KEY = "sidebarWidth";
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 560;
+const FALLBACK_WIDTH = 248;
+
+// Each row type renders its label with different font-size/weight/transform
+// (source headers are bold+uppercase+letter-spaced, group headers are bold,
+// service rows are plain) — matching that per category is what makes the
+// text measurement below accurate instead of an underestimate. "chrome" is
+// the row's own non-text width (icon/dot + chevron + padding) plus the
+// sidebar's own padding and a little breathing room; generous on purpose
+// since a too-narrow guess would defeat the point (visible truncation)
+// while a too-wide one just costs a few spare pixels.
+const ROW_TYPES = [
+  { style: { fontSize: "13.5px" }, chrome: 100 },
+  { style: { fontSize: "11.5px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }, chrome: 140 },
+  { style: { fontSize: "12.5px", fontWeight: "700" }, chrome: 120 },
+];
+
+function clampWidth(w) {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
+}
+
+// Sizes the sidebar so the longest source/group/service name fits on one
+// line without truncating — measured against the sidebar's actual fonts via
+// a hidden probe element, since a hardcoded px-per-character estimate would
+// drift from the real (variable-width) font.
+function computeAutoFitWidth(sources, groups, files) {
+  if (typeof document === "undefined") return null;
+  const serviceNames = files.map((f) => f.service).filter(Boolean);
+  const sourceNames = sources.map((s) => s.name);
+  const groupNames = groups.map((g) => g.name);
+  if (serviceNames.length + sourceNames.length + groupNames.length === 0) return null;
+
+  const probe = document.createElement("span");
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.whiteSpace = "nowrap";
+  probe.style.fontFamily = "var(--sans)";
+  document.body.appendChild(probe);
+
+  function widestRow(names, rowType) {
+    Object.assign(probe.style, {
+      fontSize: rowType.style.fontSize,
+      fontWeight: rowType.style.fontWeight || "400",
+      textTransform: rowType.style.textTransform || "none",
+      letterSpacing: rowType.style.letterSpacing || "normal",
+    });
+    let max = 0;
+    for (const name of names) {
+      probe.textContent = name;
+      max = Math.max(max, probe.getBoundingClientRect().width);
+    }
+    return max > 0 ? Math.ceil(max) + rowType.chrome : 0;
+  }
+
+  const fit = Math.max(
+    widestRow(serviceNames, ROW_TYPES[0]),
+    widestRow(sourceNames, ROW_TYPES[1]),
+    widestRow(groupNames, ROW_TYPES[2])
+  );
+  document.body.removeChild(probe);
+
+  return fit > 0 ? clampWidth(fit) : null;
 }
 
 function SourceSection({ source, services, isOpen, onToggle, view, onSelectService }) {
@@ -116,6 +182,47 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
   const [expanded, setExpanded] = useState(() => new Set(view.name === "service" ? [view.sourceId] : []));
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
 
+  // Width: an explicit user choice (dragged handle) wins and is remembered;
+  // otherwise auto-fit to whatever's the longest name currently loaded, so
+  // service names are readable without truncation out of the box.
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
+    return saved ? clampWidth(saved) : FALLBACK_WIDTH;
+  });
+  const resizingRef = useRef(false);
+
+  useEffect(() => {
+    if (localStorage.getItem(WIDTH_STORAGE_KEY) !== null) return;
+    const fit = computeAutoFitWidth(sources, groups, files);
+    if (fit) setWidth(fit);
+  }, [sources, groups, files]);
+
+  function startResize(e) {
+    e.preventDefault();
+    resizingRef.current = true;
+    document.body.classList.add("sidebar-resizing");
+
+    function onMove(ev) {
+      if (!resizingRef.current) return;
+      setWidth(clampWidth(ev.clientX));
+    }
+    function onUp(ev) {
+      resizingRef.current = false;
+      document.body.classList.remove("sidebar-resizing");
+      localStorage.setItem(WIDTH_STORAGE_KEY, String(clampWidth(ev.clientX)));
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function resetWidth() {
+    localStorage.removeItem(WIDTH_STORAGE_KEY);
+    const fit = computeAutoFitWidth(sources, groups, files);
+    setWidth(fit || FALLBACK_WIDTH);
+  }
+
   useEffect(() => {
     if (view.name !== "service") return;
     setExpanded((prev) => (prev.has(view.sourceId) ? prev : new Set(prev).add(view.sourceId)));
@@ -146,7 +253,7 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
   }
 
   return (
-    <nav className="sidebar">
+    <nav className="sidebar" style={{ width }}>
       <div className="sidebar-brand">
         <span className="sidebar-brand-mark" aria-hidden="true" />
         <span className="sidebar-brand-text">Log Viewer</span>
@@ -222,6 +329,13 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
       >
         <SettingsIcon className="sidebar-icon" /> Einstellungen
       </button>
+
+      <div
+        className="sidebar-resize-handle"
+        onMouseDown={startResize}
+        onDoubleClick={resetWidth}
+        title="Ziehen zum Größe ändern, Doppelklick zum Zurücksetzen"
+      />
     </nav>
   );
 }

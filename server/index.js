@@ -19,6 +19,7 @@ app.use(express.json({ limit: "50mb" }));
 
 const PORT = process.env.PORT || 4000;
 const CONFIG_PATH = path.resolve("config.json");
+const SAVED_SEARCHES_PATH = path.resolve("saved-searches.json");
 const DEFAULT_REFRESH_SECONDS = 30;
 const DEFAULT_GOTO_PAGE_DELAY_SECONDS = 1.5;
 const MONITOR_INTERVAL_MS = 30_000;
@@ -46,6 +47,9 @@ function loadConfig() {
       sources: loadedSources,
       groups: Array.isArray(parsed.groups) ? parsed.groups : null,
       servers: Array.isArray(parsed.servers) ? parsed.servers : null,
+      // Only read here for one-time migration below — saved searches now
+      // live in their own file, config.json no longer stores or writes this.
+      legacySavedSearches: Array.isArray(parsed.savedSearches) ? parsed.savedSearches : null,
       refreshIntervalSeconds:
         typeof parsed.refreshIntervalSeconds === "number" ? parsed.refreshIntervalSeconds : null,
       goToPageDelaySeconds:
@@ -54,13 +58,41 @@ function loadConfig() {
   } catch {
     // no config.json yet, or unreadable — fall through to defaults
   }
-  return { sources: null, groups: null, servers: null, refreshIntervalSeconds: null, goToPageDelaySeconds: null };
+  return {
+    sources: null,
+    groups: null,
+    servers: null,
+    legacySavedSearches: null,
+    refreshIntervalSeconds: null,
+    goToPageDelaySeconds: null,
+  };
 }
 
 function saveConfig() {
   fs.writeFileSync(
     CONFIG_PATH,
     JSON.stringify({ sources, groups, servers, refreshIntervalSeconds, goToPageDelaySeconds }, null, 2),
+    "utf-8"
+  );
+}
+
+function loadSavedSearchesFile() {
+  try {
+    const raw = fs.readFileSync(SAVED_SEARCHES_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    return {
+      folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+      searches: Array.isArray(parsed.searches) ? parsed.searches : [],
+    };
+  } catch {
+    return null; // no saved-searches.json yet, or unreadable
+  }
+}
+
+function saveSavedSearchesFile() {
+  fs.writeFileSync(
+    SAVED_SEARCHES_PATH,
+    JSON.stringify({ folders: savedSearchFolders, searches: savedSearches }, null, 2),
     "utf-8"
   );
 }
@@ -81,6 +113,16 @@ let servers = loaded.servers || [];
 for (const s of servers) if (!Array.isArray(s.services)) s.services = [];
 let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SECONDS;
 let goToPageDelaySeconds = loaded.goToPageDelaySeconds ?? DEFAULT_GOTO_PAGE_DELAY_SECONDS;
+
+const loadedSavedSearches = loadSavedSearchesFile();
+let savedSearchFolders = loadedSavedSearches?.folders || [];
+let savedSearches = loadedSavedSearches?.searches || [];
+// One-time migration: saved searches used to live inside config.json.
+if (!loadedSavedSearches && Array.isArray(loaded.legacySavedSearches) && loaded.legacySavedSearches.length > 0) {
+  savedSearches = loaded.legacySavedSearches.map((s) => ({ ...s, folderId: s.folderId || null }));
+  saveSavedSearchesFile();
+}
+
 pruneExpiredSources();
 saveConfig();
 
@@ -629,6 +671,111 @@ app.put("/api/settings", (req, res) => {
   res.json({ refreshIntervalSeconds, goToPageDelaySeconds });
 });
 
+// ---- Saved searches (global search page) ----
+//
+// Kept in their own file (saved-searches.json), not config.json — a separate
+// concern from the server's own setup, and likely to grow independently.
+// Stores the source/service names alongside their ids (not just the ids) so
+// that a saved search whose source or service has since been deleted can
+// still show a meaningful name in the "no longer exists" warning — looking
+// it up in the current sources/files list wouldn't work anymore by then.
+
+function savedSearchFolderInfo(f) {
+  return { id: f.id, name: f.name };
+}
+
+function buildSavedSearch(body, existing) {
+  const { name, folderId, query, sources: srcList, services: svcList, filters, refreshIntervalSeconds } = body || {};
+  return {
+    id: existing?.id || crypto.randomUUID(),
+    name: name.trim(),
+    folderId: folderId || null,
+    query: typeof query === "string" ? query : "",
+    sources: Array.isArray(srcList)
+      ? srcList.filter((s) => s && s.id).map((s) => ({ id: s.id, name: s.name || s.id }))
+      : [],
+    services: Array.isArray(svcList)
+      ? svcList
+          .filter((s) => s && s.sourceId && s.service)
+          .map((s) => ({ sourceId: s.sourceId, sourceName: s.sourceName || s.sourceId, service: s.service }))
+      : [],
+    filters: {
+      levels: Array.isArray(filters?.levels) ? filters.levels : [],
+      pid: filters?.pid || "",
+      tid: filters?.tid || "",
+      excludeList: Array.isArray(filters?.excludeList) ? filters.excludeList : [],
+      excludeMode: filters?.excludeMode === "exact" ? "exact" : "contains",
+      from: filters?.from || "",
+      to: filters?.to || "",
+      fromTime: filters?.fromTime || "00:00",
+      toTime: filters?.toTime || "23:59",
+    },
+    // 0 (or absent) means "off", matching the search page's own convention.
+    refreshIntervalSeconds: Number.isFinite(refreshIntervalSeconds) && refreshIntervalSeconds > 0
+      ? refreshIntervalSeconds
+      : 0,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: existing ? new Date().toISOString() : undefined,
+  };
+}
+
+app.get("/api/saved-search-folders", (req, res) => {
+  res.json(savedSearchFolders.map(savedSearchFolderInfo));
+});
+
+app.post("/api/saved-search-folders", (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
+  const folder = { id: crypto.randomUUID(), name: name.trim() };
+  savedSearchFolders.push(folder);
+  saveSavedSearchesFile();
+  res.status(201).json(savedSearchFolderInfo(folder));
+});
+
+app.delete("/api/saved-search-folders/:id", (req, res) => {
+  const idx = savedSearchFolders.findIndex((f) => f.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Ordner nicht gefunden." });
+  savedSearchFolders.splice(idx, 1);
+  // Searches in the deleted folder aren't removed, just moved back to the root.
+  for (const s of savedSearches) if (s.folderId === req.params.id) s.folderId = null;
+  saveSavedSearchesFile();
+  res.status(204).end();
+});
+
+app.get("/api/saved-searches", (req, res) => {
+  res.json(savedSearches);
+});
+
+app.post("/api/saved-searches", (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
+  const savedSearch = buildSavedSearch(req.body);
+  savedSearches.push(savedSearch);
+  saveSavedSearchesFile();
+  res.status(201).json(savedSearch);
+});
+
+// Full overwrite of an existing saved search — used when the client confirms
+// replacing one that already has the same name in the same folder.
+app.put("/api/saved-searches/:id", (req, res) => {
+  const idx = savedSearches.findIndex((s) => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Gespeicherte Suche nicht gefunden." });
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
+  const updated = buildSavedSearch(req.body, savedSearches[idx]);
+  savedSearches[idx] = updated;
+  saveSavedSearchesFile();
+  res.json(updated);
+});
+
+app.delete("/api/saved-searches/:id", (req, res) => {
+  const idx = savedSearches.findIndex((s) => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Gespeicherte Suche nicht gefunden." });
+  savedSearches.splice(idx, 1);
+  saveSavedSearchesFile();
+  res.status(204).end();
+});
+
 // ---- Log data ----
 
 app.get("/api/files", (req, res) => {
@@ -818,9 +965,13 @@ function drawEntriesTable(doc, entries, { title, showSource, showService }) {
   let y = drawHeader(doc.y);
 
   entries.forEach((e, rowIndex) => {
+    // Standard PDF fonts (WinAnsiEncoding) don't render raw tab characters
+    // correctly - the "Trace ended/suspended ... at: ..." footer lines use a
+    // literal tab, which without this would draw as garbled glyphs.
+    const message = String(e.message ?? "").replace(/\t/g, "    ");
     const messageWidth = columns[columns.length - 1].width - 8;
     doc.font("Courier").fontSize(8);
-    const messageHeight = doc.heightOfString(e.message, { width: messageWidth });
+    const messageHeight = doc.heightOfString(message, { width: messageWidth });
     const rowHeight = Math.max(20, messageHeight + 10);
 
     if (y + rowHeight > bottomLimit && y > doc.page.margins.top + 18) {
@@ -841,7 +992,7 @@ function drawEntriesTable(doc, entries, { title, showSource, showService }) {
           .fillColor(colors.fg)
           .text(e.levelName, cx + 4, y + 8, { width: col.width - 12, align: "center" });
       } else if (col.key === "message") {
-        doc.font("Courier").fontSize(8).fillColor("#111").text(e.message, cx + 4, y + 5, { width: messageWidth });
+        doc.font("Courier").fontSize(8).fillColor("#111").text(message, cx + 4, y + 5, { width: messageWidth });
       } else {
         const mono = col.key === "timestamp" || col.key === "pid" || col.key === "tid";
         const value = col.key === "timestamp" ? formatTimestampForPdf(e.timestamp) : String(e[col.key] ?? "");

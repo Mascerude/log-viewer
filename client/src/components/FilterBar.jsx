@@ -3,7 +3,7 @@ import { LEVEL_COLORS, LEVEL_LETTERS, LEVEL_ORDER } from "../levelColors";
 import DateRangePicker from "./DateRangePicker";
 import { FilterXIcon, CloseIcon } from "./icons";
 
-export default function FilterBar({ filters, onChange, services, sources, minDate, maxDate }) {
+export default function FilterBar({ filters, onChange, services, sources, minDate, maxDate, showSearch = true }) {
   const [excludeDraft, setExcludeDraft] = useState("");
 
   function set(patch) {
@@ -142,16 +142,18 @@ export default function FilterBar({ filters, onChange, services, sources, minDat
         />
       </div>
 
-      <div className="filter-group filter-group-search">
-        <label htmlFor="search">Suche</label>
-        <input
-          id="search"
-          type="text"
-          placeholder="Nachricht durchsuchen..."
-          value={filters.search}
-          onChange={(e) => set({ search: e.target.value })}
-        />
-      </div>
+      {showSearch && (
+        <div className="filter-group filter-group-search">
+          <label htmlFor="search">Suche</label>
+          <input
+            id="search"
+            type="text"
+            placeholder="Nachricht durchsuchen..."
+            value={filters.search}
+            onChange={(e) => set({ search: e.target.value })}
+          />
+        </div>
+      )}
 
       <div className="filter-group filter-group-search">
         <label htmlFor="exclude">

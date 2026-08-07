@@ -31,6 +31,9 @@
   --good: oklch(0.6 0.15 145);
   --critical: oklch(0.63 0.19 23.03);
   --stack-accent: oklch(0.5 0.16 264);
+  --diff-color: #fab219;
+  --diff-bg: color-mix(in oklch, var(--diff-color) 16%, transparent);
+  --diff-border: color-mix(in oklch, var(--diff-color) 55%, transparent);
 
   --sans: "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --heading: var(--sans);
