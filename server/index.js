@@ -13,8 +13,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-// Raised above the 100kb default: a full-export PDF request bundles every
-// matched entry (including long multi-line stack traces) in one JSON body.
+// Raised above the 100kb default for saved searches with large filter lists.
 app.use(express.json({ limit: "50mb" }));
 
 const PORT = process.env.PORT || 4000;
@@ -123,13 +122,13 @@ if (!loadedSavedSearches && Array.isArray(loaded.legacySavedSearches) && loaded.
   saveSavedSearchesFile();
 }
 
-pruneExpiredSources();
+pruneExpired();
 saveConfig();
 
-// Re-check periodically so a temporary source disappears shortly after
-// midnight on its expiry date without requiring a server restart.
+// Re-check periodically so a temporary source or group disappears shortly
+// after midnight on its expiry date without requiring a server restart.
 setInterval(() => {
-  if (pruneExpiredSources()) saveConfig();
+  if (pruneExpired()) saveConfig();
 }, MONITOR_INTERVAL_MS);
 
 function sourceInfo(s) {
@@ -146,7 +145,20 @@ function sourceInfo(s) {
 }
 
 function groupInfo(g) {
-  return { id: g.id, name: g.name };
+  return { id: g.id, name: g.name, parentGroupId: g.parentGroupId || null, expiresAt: g.expiresAt || null };
+}
+
+// True if setting `groupId`'s parent to `candidateParentId` would create a
+// cycle — i.e. candidateParentId is groupId itself, or already sits inside
+// groupId's own subtree. Walks candidateParentId's ancestor chain looking
+// for groupId.
+function wouldCreateGroupCycle(groupId, candidateParentId, groupsList) {
+  let current = groupsList.find((g) => g.id === candidateParentId);
+  while (current) {
+    if (current.id === groupId) return true;
+    current = current.parentGroupId ? groupsList.find((g) => g.id === current.parentGroupId) : null;
+  }
+  return false;
 }
 
 // Reorders `list` to match `order` (an array of ids). Ids not present in the
@@ -170,14 +182,43 @@ function reorderById(list, order) {
   return reordered;
 }
 
-// Temporary sources (expiresAt set) quietly disappear once their date has
-// passed — treated exactly like a deleted source everywhere else, since
-// resolveSources()/listAllFiles() only ever see what's left in `sources`.
-function pruneExpiredSources() {
+// Temporary sources AND groups (expiresAt set) quietly disappear once their
+// date has passed. A group's expiry cascades: every source directly in it,
+// and every group nested under it (recursively, taking their own contents
+// along too) gets deleted outright — not just ungrouped, since a temporary
+// group represents a self-contained, time-boxed structure meant to vanish as
+// a whole. A source's own expiresAt still works independently of any group.
+function pruneExpired() {
   const today = new Date().toISOString().slice(0, 10);
-  const before = sources.length;
+  let changed = false;
+
+  const expiredRootIds = groups.filter((g) => g.expiresAt && g.expiresAt < today).map((g) => g.id);
+  if (expiredRootIds.length > 0) {
+    const toDelete = new Set(expiredRootIds);
+    let frontier = expiredRootIds;
+    while (frontier.length > 0) {
+      const next = [];
+      for (const g of groups) {
+        if (frontier.includes(g.parentGroupId) && !toDelete.has(g.id)) {
+          toDelete.add(g.id);
+          next.push(g.id);
+        }
+      }
+      frontier = next;
+    }
+
+    const sourcesBefore = sources.length;
+    sources = sources.filter((s) => !s.groupId || !toDelete.has(s.groupId));
+    const groupsBefore = groups.length;
+    groups = groups.filter((g) => !toDelete.has(g.id));
+    if (sources.length !== sourcesBefore || groups.length !== groupsBefore) changed = true;
+  }
+
+  const sourcesBefore2 = sources.length;
   sources = sources.filter((s) => !s.expiresAt || s.expiresAt >= today);
-  return sources.length !== before;
+  if (sources.length !== sourcesBefore2) changed = true;
+
+  return changed;
 }
 
 // ---- Servers: standalone infrastructure monitoring, entirely independent of
@@ -365,6 +406,34 @@ function loadEntries(files) {
   return entries;
 }
 
+// Same as loadEntries, but processes files in small batches and yields to the
+// event loop between them via setImmediate — used by background PDF export
+// jobs so reading a large file set doesn't block the server for other
+// requests (including other jobs' progress polling), and so a job can be
+// cancelled between batches instead of only before/after the whole scan.
+// Returns null if cancelled partway through.
+async function loadEntriesChunked(files, onProgress, isCancelled) {
+  const entries = [];
+  const chunkSize = 20;
+  for (let i = 0; i < files.length; i += chunkSize) {
+    if (isCancelled()) return null;
+    const chunk = files.slice(i, i + chunkSize);
+    for (const f of chunk) {
+      try {
+        const parsed = parseLogFile(f.fullPath, f.fileName);
+        for (const e of parsed) {
+          entries.push({ ...e, id: `${f.sourceId}:${e.id}`, service: f.service, sourceId: f.sourceId, sourceName: f.sourceName });
+        }
+      } catch (err) {
+        console.error(`Failed to parse ${f.fileName}:`, err.message);
+      }
+    }
+    onProgress(Math.min(files.length, i + chunkSize), files.length);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return entries;
+}
+
 // Validates an optional per-source/service refresh-interval override:
 // null/undefined/"" clears it (falls back to the next level up), otherwise
 // it must be a number >= 1s (same floor as the global setting), rounded to
@@ -497,9 +566,21 @@ app.get("/api/groups", (req, res) => {
 });
 
 app.post("/api/groups", (req, res) => {
-  const { name } = req.body || {};
+  const { name, parentGroupId, expiresAt } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
-  const group = { id: crypto.randomUUID(), name: name.trim() };
+  if (parentGroupId && !groups.some((g) => g.id === parentGroupId)) {
+    return res.status(400).json({ error: "Übergeordnete Gruppe nicht gefunden." });
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if (expiresAt && expiresAt.trim() && expiresAt.trim() <= today) {
+    return res.status(400).json({ error: "Ablaufdatum muss in der Zukunft liegen." });
+  }
+  const group = {
+    id: crypto.randomUUID(),
+    name: name.trim(),
+    ...(parentGroupId ? { parentGroupId } : {}),
+    ...(expiresAt && expiresAt.trim() ? { expiresAt: expiresAt.trim() } : {}),
+  };
   groups.push(group);
   saveConfig();
   res.status(201).json(groupInfo(group));
@@ -519,6 +600,35 @@ app.put("/api/groups/:id", (req, res) => {
   if (!group) return res.status(404).json({ error: "Gruppe nicht gefunden." });
   const { name } = req.body || {};
   if (name && name.trim()) group.name = name.trim();
+  if ("expiresAt" in req.body) {
+    const trimmed = req.body.expiresAt && req.body.expiresAt.trim();
+    if (trimmed) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (trimmed <= today) {
+        return res.status(400).json({ error: "Ablaufdatum muss in der Zukunft liegen." });
+      }
+      group.expiresAt = trimmed;
+    } else {
+      delete group.expiresAt;
+    }
+  }
+  if ("parentGroupId" in req.body) {
+    const parentGroupId = req.body.parentGroupId || null;
+    if (parentGroupId) {
+      if (parentGroupId === group.id) {
+        return res.status(400).json({ error: "Eine Gruppe kann nicht ihre eigene übergeordnete Gruppe sein." });
+      }
+      if (!groups.some((g) => g.id === parentGroupId)) {
+        return res.status(400).json({ error: "Übergeordnete Gruppe nicht gefunden." });
+      }
+      if (wouldCreateGroupCycle(group.id, parentGroupId, groups)) {
+        return res.status(400).json({ error: "Diese Zuordnung würde eine zirkuläre Gruppierung erzeugen." });
+      }
+      group.parentGroupId = parentGroupId;
+    } else {
+      delete group.parentGroupId;
+    }
+  }
   saveConfig();
   res.json(groupInfo(group));
 });
@@ -527,8 +637,10 @@ app.delete("/api/groups/:id", (req, res) => {
   const idx = groups.findIndex((g) => g.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Gruppe nicht gefunden." });
   groups.splice(idx, 1);
-  // Sources in the deleted group aren't removed, just ungrouped.
+  // Sources/sub-groups in the deleted group aren't removed, just moved to
+  // the root — same "ungroup, don't delete" behavior as always.
   for (const s of sources) if (s.groupId === req.params.id) delete s.groupId;
+  for (const g of groups) if (g.parentGroupId === req.params.id) delete g.parentGroupId;
   saveConfig();
   res.status(204).end();
 });
@@ -685,7 +797,16 @@ function savedSearchFolderInfo(f) {
 }
 
 function buildSavedSearch(body, existing) {
-  const { name, folderId, query, sources: srcList, services: svcList, filters, refreshIntervalSeconds } = body || {};
+  const {
+    name,
+    folderId,
+    query,
+    sources: srcList,
+    services: svcList,
+    excludedServices: excSvcList,
+    filters,
+    refreshIntervalSeconds,
+  } = body || {};
   return {
     id: existing?.id || crypto.randomUUID(),
     name: name.trim(),
@@ -696,6 +817,11 @@ function buildSavedSearch(body, existing) {
       : [],
     services: Array.isArray(svcList)
       ? svcList
+          .filter((s) => s && s.sourceId && s.service)
+          .map((s) => ({ sourceId: s.sourceId, sourceName: s.sourceName || s.sourceId, service: s.service }))
+      : [],
+    excludedServices: Array.isArray(excSvcList)
+      ? excSvcList
           .filter((s) => s && s.sourceId && s.service)
           .map((s) => ({ sourceId: s.sourceId, sourceName: s.sourceName || s.sourceId, service: s.service }))
       : [],
@@ -746,6 +872,14 @@ app.get("/api/saved-searches", (req, res) => {
   res.json(savedSearches);
 });
 
+// Looked up by direct-link shares — a saved search's id alone is enough to
+// load it, no need to fetch (and filter through) the whole list.
+app.get("/api/saved-searches/:id", (req, res) => {
+  const search = savedSearches.find((s) => s.id === req.params.id);
+  if (!search) return res.status(404).json({ error: "Gespeicherte Suche nicht gefunden." });
+  res.json(search);
+});
+
 app.post("/api/saved-searches", (req, res) => {
   const { name } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: "Name ist erforderlich." });
@@ -782,6 +916,17 @@ app.get("/api/files", (req, res) => {
   res.json(listAllFiles(req.query.source));
 });
 
+// Parses a servicePairs/excludeServicePairs JSON string (an array of
+// [sourceId, service] tuples) into a Set of "sourceId::service" keys — a
+// plain name isn't enough since two different sources can happen to run a
+// same-named service. Throws on malformed input; callers decide how strict
+// to be about that (see /api/logs vs. runPdfJob).
+function parsePairFilter(json) {
+  const parsed = JSON.parse(json);
+  if (!Array.isArray(parsed)) throw new Error("not an array");
+  return new Set(parsed.map(([sourceId, svc]) => `${sourceId}::${svc}`));
+}
+
 app.get("/api/logs", (req, res) => {
   const {
     from,
@@ -797,6 +942,7 @@ app.get("/api/logs", (req, res) => {
     service,
     source,
     servicePairs,
+    excludeServicePairs,
     sortBy = "timestamp",
     sortDir = "desc",
     page = "1",
@@ -805,26 +951,27 @@ app.get("/api/logs", (req, res) => {
 
   const services = service ? String(service).split(",").filter(Boolean) : null;
 
-  // Distinct from `service`: an exact (sourceId, service) allowlist, needed
-  // because two different sources can happen to run a same-named service —
-  // filtering by name alone would blend their entries together.
   let pairFilter = null;
   if (servicePairs) {
-    let parsed;
     try {
-      parsed = JSON.parse(servicePairs);
+      pairFilter = parsePairFilter(servicePairs);
     } catch {
-      return res.status(400).json({ error: "servicePairs ist kein gültiges JSON." });
+      return res.status(400).json({ error: "servicePairs ist kein gültiges JSON-Array." });
     }
-    if (!Array.isArray(parsed)) {
-      return res.status(400).json({ error: "servicePairs muss ein Array sein." });
+  }
+  let excludePairFilter = null;
+  if (excludeServicePairs) {
+    try {
+      excludePairFilter = parsePairFilter(excludeServicePairs);
+    } catch {
+      return res.status(400).json({ error: "excludeServicePairs ist kein gültiges JSON-Array." });
     }
-    pairFilter = new Set(parsed.map(([sourceId, svc]) => `${sourceId}::${svc}`));
   }
 
   const files = getFilesInRange(from, to, source).filter((f) => {
     if (services && !services.includes(f.service)) return false;
     if (pairFilter && !pairFilter.has(`${f.sourceId}::${f.service}`)) return false;
+    if (excludePairFilter && excludePairFilter.has(`${f.sourceId}::${f.service}`)) return false;
     return true;
   });
   let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
@@ -1017,30 +1164,212 @@ function drawEntriesTable(doc, entries, { title, showSource, showService }) {
   });
 }
 
-// Renders the exact set of entries the client already assembled (current
-// page / a page range / everything — see ExportMenu.jsx) into a real PDF
-// file streamed back as a download, rather than relying on the browser's
-// print-to-PDF dialog.
-app.post("/api/export-pdf", (req, res) => {
-  const { title, filename, showSource, showService, entries } = req.body || {};
-  if (!Array.isArray(entries)) {
-    return res.status(400).json({ error: "entries muss ein Array sein." });
-  }
+// ---- Background PDF export jobs ----
+//
+// Unlike a synchronous export (client fetches every needed page itself, then
+// posts the assembled entries and waits for the PDF), a job is handed just
+// the filter/search parameters and re-derives the entries itself — which
+// makes real progress reporting possible (files read so far) and lets the
+// job keep running independently of the request/tab that started it. Jobs
+// live only in memory, like sources/groups/servers, and are lost on a
+// server restart.
+const pdfJobs = [];
 
-  const safeTitle = String(title || "Log-Export");
-  const safeFilename = String(filename || safeTitle);
+function pdfJobInfo(job) {
+  return {
+    id: job.id,
+    kind: job.kind,
+    title: job.title,
+    filename: job.filename,
+    status: job.cancelled && job.status === "running" ? "stopping" : job.status,
+    progress: job.progress,
+    phase: job.phase,
+    entryCount: job.entryCount,
+    error: job.error,
+    createdAt: job.createdAt,
+  };
+}
+
+function buildPdfContentDisposition(filename) {
+  const safeFilename = String(filename || "export");
   const asciiName = safeFilename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "") || "export";
   const encodedName = encodeURIComponent(safeFilename);
+  return `attachment; filename="${asciiName}.pdf"; filename*=UTF-8''${encodedName}.pdf`;
+}
 
-  const doc = new PDFDocument({ margin: 28, size: "A4", layout: "landscape" });
+// Gathers entries (chunked, cancellable), filters/sorts them, slices to the
+// requested page range, and renders the PDF — mirroring /api/logs resp.
+// /api/message-occurrences' filtering logic depending on job.kind, since a
+// job re-derives entries itself instead of receiving them pre-fetched.
+async function runPdfJob(job, body) {
+  const isCancelled = () => job.cancelled;
+  try {
+    let files;
+    if (job.kind === "message-occurrences") {
+      const { scope, sourceId, service } = body;
+      if (scope === "global") files = listAllFiles();
+      else if (scope === "source") files = listAllFiles(sourceId);
+      else files = listAllFiles(sourceId).filter((f) => f.service === service);
+    } else {
+      const services = body.service ? String(body.service).split(",").filter(Boolean) : null;
+      let pairFilter = null;
+      if (body.servicePairs) {
+        try {
+          pairFilter = parsePairFilter(body.servicePairs);
+        } catch {
+          // ignore malformed input, best-effort like the rest of the job
+        }
+      }
+      let excludePairFilter = null;
+      if (body.excludeServicePairs) {
+        try {
+          excludePairFilter = parsePairFilter(body.excludeServicePairs);
+        } catch {
+          // ignore malformed input, best-effort like the rest of the job
+        }
+      }
+      files = getFilesInRange(body.from, body.to, body.source).filter((f) => {
+        if (services && !services.includes(f.service)) return false;
+        if (pairFilter && !pairFilter.has(`${f.sourceId}::${f.service}`)) return false;
+        if (excludePairFilter && excludePairFilter.has(`${f.sourceId}::${f.service}`)) return false;
+        return true;
+      });
+    }
+
+    job.phase = "Lade Einträge...";
+    let entries = await loadEntriesChunked(
+      files,
+      (done, total) => {
+        job.progress = total > 0 ? Math.round((done / total) * 70) : 70;
+      },
+      isCancelled
+    );
+    if (entries === null) {
+      job.status = "stopped";
+      return;
+    }
+
+    job.phase = "Filtere & sortiere...";
+    if (job.kind === "message-occurrences") {
+      const { message, mode } = body;
+      const normalizedTarget = mode === "similar" ? normalizeMessage(message) : null;
+      entries = entries.filter((e) =>
+        mode === "similar" ? normalizeMessage(e.message) === normalizedTarget : e.message === message
+      );
+    } else {
+      entries = filterEntriesByDate(entries, body.from, body.to, body.fromTime, body.toTime);
+      entries = applyEntryFilters(entries, body);
+    }
+    entries = sortEntries(entries, body.sortBy, body.sortDir);
+    job.progress = 80;
+    if (job.cancelled) {
+      job.status = "stopped";
+      return;
+    }
+
+    const { fromPage, toPage, pageSize } = body;
+    if (fromPage && toPage && pageSize) {
+      const lo = Math.max(1, Math.min(fromPage, toPage));
+      const hi = Math.max(fromPage, toPage);
+      entries = entries.slice((lo - 1) * pageSize, hi * pageSize);
+    }
+    job.progress = 90;
+
+    job.phase = "Erstelle PDF...";
+    const doc = new PDFDocument({ margin: 28, size: "A4", layout: "landscape" });
+    const chunks = [];
+    doc.on("data", (chunk) => chunks.push(chunk));
+    const finished = new Promise((resolve) => doc.on("end", resolve));
+    drawEntriesTable(doc, entries, { title: job.title, showSource: job.showSource, showService: job.showService });
+    doc.end();
+    await finished;
+
+    if (job.cancelled) {
+      job.status = "stopped";
+      return;
+    }
+
+    job.pdfBuffer = Buffer.concat(chunks);
+    job.entryCount = entries.length;
+    job.progress = 100;
+    job.phase = "Fertig";
+    job.status = "done";
+  } catch (err) {
+    job.status = "error";
+    job.error = err.message;
+  }
+}
+
+// Creates and immediately starts a background export job (see runPdfJob).
+// Body carries the same filter params /api/logs or /api/message-occurrences
+// take (selected via `kind`), plus pageSize/fromPage/toPage to reproduce the
+// "current page" / "page X to Y" / "all pages" choice from ExportMenu.jsx,
+// and title/filename/showSource/showService for rendering.
+app.post("/api/pdf-jobs", (req, res) => {
+  const body = req.body || {};
+  const { kind, title, filename, showSource, showService } = body;
+  if (kind !== "logs" && kind !== "message-occurrences") {
+    return res.status(400).json({ error: "kind muss 'logs' oder 'message-occurrences' sein." });
+  }
+  if (kind === "message-occurrences") {
+    if (!body.message) return res.status(400).json({ error: "message ist erforderlich." });
+    if (body.scope === "source" && !body.sourceId) {
+      return res.status(400).json({ error: "sourceId ist erforderlich für scope=source." });
+    }
+    if (body.scope !== "global" && body.scope !== "source" && (!body.sourceId || !body.service)) {
+      return res.status(400).json({ error: "sourceId und service sind erforderlich für scope=service." });
+    }
+  }
+
+  const job = {
+    id: crypto.randomUUID(),
+    kind,
+    title: String(title || "Log-Export"),
+    filename: String(filename || title || "export"),
+    showSource: !!showSource,
+    showService: !!showService,
+    status: "running",
+    progress: 0,
+    phase: "Wird gestartet...",
+    entryCount: null,
+    error: null,
+    cancelled: false,
+    pdfBuffer: null,
+    createdAt: new Date().toISOString(),
+  };
+  pdfJobs.unshift(job);
+  res.status(201).json(pdfJobInfo(job));
+  setImmediate(() => runPdfJob(job, body));
+});
+
+app.get("/api/pdf-jobs", (req, res) => {
+  res.json(pdfJobs.map(pdfJobInfo));
+});
+
+app.post("/api/pdf-jobs/:id/stop", (req, res) => {
+  const job = pdfJobs.find((j) => j.id === req.params.id);
+  if (!job) return res.status(404).json({ error: "Job nicht gefunden." });
+  if (job.status === "running") job.cancelled = true;
+  res.json(pdfJobInfo(job));
+});
+
+app.delete("/api/pdf-jobs/:id", (req, res) => {
+  const index = pdfJobs.findIndex((j) => j.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: "Job nicht gefunden." });
+  pdfJobs[index].cancelled = true;
+  pdfJobs.splice(index, 1);
+  res.status(204).end();
+});
+
+app.get("/api/pdf-jobs/:id/download", (req, res) => {
+  const job = pdfJobs.find((j) => j.id === req.params.id);
+  if (!job) return res.status(404).json({ error: "Job nicht gefunden." });
+  if (job.status !== "done" || !job.pdfBuffer) {
+    return res.status(400).json({ error: "Job ist noch nicht fertig." });
+  }
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${asciiName}.pdf"; filename*=UTF-8''${encodedName}.pdf`
-  );
-  doc.pipe(res);
-  drawEntriesTable(doc, entries, { title: safeTitle, showSource: !!showSource, showService: !!showService });
-  doc.end();
+  res.setHeader("Content-Disposition", buildPdfContentDisposition(job.filename));
+  res.send(job.pdfBuffer);
 });
 
 app.get("/api/stats", (req, res) => {

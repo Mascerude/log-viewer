@@ -56,12 +56,12 @@ export function getGroups() {
   return get("/groups");
 }
 
-export function addGroup({ name }) {
-  return send("POST", "/groups", { name });
+export function addGroup({ name, parentGroupId, expiresAt }) {
+  return send("POST", "/groups", { name, parentGroupId, expiresAt });
 }
 
-export function updateGroup(id, { name }) {
-  return send("PUT", `/groups/${id}`, { name });
+export function updateGroup(id, { name, parentGroupId, expiresAt }) {
+  return send("PUT", `/groups/${id}`, { name, parentGroupId, expiresAt });
 }
 
 export function deleteGroup(id) {
@@ -143,6 +143,7 @@ export function getLogs({
   service,
   source,
   servicePairs,
+  excludeServicePairs,
   sortBy,
   sortDir,
   page,
@@ -162,6 +163,7 @@ export function getLogs({
     service,
     source,
     servicePairs,
+    excludeServicePairs,
     sortBy,
     sortDir,
     page,
@@ -193,17 +195,43 @@ export function getSavedSearches() {
   return get("/saved-searches");
 }
 
-export function createSavedSearch({ name, folderId, query, sources, services, filters, refreshIntervalSeconds }) {
-  return send("POST", "/saved-searches", { name, folderId, query, sources, services, filters, refreshIntervalSeconds });
+export function getSavedSearch(id) {
+  return get(`/saved-searches/${id}`);
 }
 
-export function updateSavedSearch(id, { name, folderId, query, sources, services, filters, refreshIntervalSeconds }) {
+export function createSavedSearch({
+  name,
+  folderId,
+  query,
+  sources,
+  services,
+  excludedServices,
+  filters,
+  refreshIntervalSeconds,
+}) {
+  return send("POST", "/saved-searches", {
+    name,
+    folderId,
+    query,
+    sources,
+    services,
+    excludedServices,
+    filters,
+    refreshIntervalSeconds,
+  });
+}
+
+export function updateSavedSearch(
+  id,
+  { name, folderId, query, sources, services, excludedServices, filters, refreshIntervalSeconds }
+) {
   return send("PUT", `/saved-searches/${id}`, {
     name,
     folderId,
     query,
     sources,
     services,
+    excludedServices,
     filters,
     refreshIntervalSeconds,
   });
@@ -219,4 +247,24 @@ export function getSettings() {
 
 export function updateSettings({ refreshIntervalSeconds, goToPageDelaySeconds }) {
   return send("PUT", "/settings", { refreshIntervalSeconds, goToPageDelaySeconds });
+}
+
+export function createPdfJob(payload) {
+  return send("POST", "/pdf-jobs", payload);
+}
+
+export function getPdfJobs() {
+  return get("/pdf-jobs");
+}
+
+export function stopPdfJob(id) {
+  return send("POST", `/pdf-jobs/${id}/stop`);
+}
+
+export function deletePdfJob(id) {
+  return send("DELETE", `/pdf-jobs/${id}`);
+}
+
+export function pdfJobDownloadUrl(id) {
+  return `/api/pdf-jobs/${id}/download`;
 }

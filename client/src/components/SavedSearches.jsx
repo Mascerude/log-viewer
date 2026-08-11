@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CloseIcon, AlertIcon, FolderIcon, ChevronRightIcon, SearchIcon, CheckIcon } from "./icons";
+import { CloseIcon, AlertIcon, FolderIcon, ChevronRightIcon, SearchIcon, CheckIcon, LinkIcon } from "./icons";
 import {
   getSavedSearchFolders,
   createSavedSearchFolder,
@@ -9,6 +9,38 @@ import {
   updateSavedSearch,
   deleteSavedSearch,
 } from "../api";
+import { copyPlainText } from "../clipboard";
+
+// A saved search's share link — anyone opening this URL (on the same
+// server) gets it applied automatically, same as clicking it here would.
+function savedSearchLink(id) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("savedSearch", id);
+  return url.toString();
+}
+
+function ShareLinkButton({ id, name }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    await copyPlainText(savedSearchLink(id));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      className="saved-search-delete"
+      onClick={handleCopy}
+      aria-label={`Link zu „${name}“ kopieren`}
+      title={copied ? "Kopiert!" : "Direktlink kopieren"}
+    >
+      {copied ? <CheckIcon /> : <LinkIcon />}
+    </button>
+  );
+}
 
 function NamePromptModal({ title, label, placeholder, onSave, onClose, children }) {
   const [name, setName] = useState("");
@@ -321,6 +353,7 @@ const SUMMARY_FIELDS = [
   ["query", "Suchtext"],
   ["sources", "Quellen"],
   ["services", "Services"],
+  ["excludedServices", "Services (ausgeschlossen)"],
   ["zeitraum", "Zeitraum"],
   ["level", "Level"],
   ["pid", "PID"],
@@ -339,6 +372,7 @@ function summarize(s) {
     query: s.query?.trim() ? s.query : "—",
     sources: (s.sources || []).map((x) => x.name).join(", ") || "—",
     services: (s.services || []).map((x) => `${x.service} (${x.sourceName})`).join(", ") || "—",
+    excludedServices: (s.excludedServices || []).map((x) => `${x.service} (${x.sourceName})`).join(", ") || "—",
     zeitraum,
     level: f.levels && f.levels.length > 0 && f.levels.length < 5 ? f.levels.join(", ") : "Alle",
     pid: f.pid || "—",
@@ -483,6 +517,7 @@ export default function SavedSearchesModal({ open, onClose, savePayload, onLoad 
           <SearchIcon className="folder-view-item-icon" />
           {s.name}
         </button>
+        <ShareLinkButton id={s.id} name={s.name} />
         <button
           type="button"
           className="saved-search-delete"

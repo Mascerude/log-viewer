@@ -5,11 +5,21 @@ import HomePage from "./components/HomePage";
 import SearchPage from "./components/SearchPage";
 import ServiceView from "./components/ServiceView";
 import SettingsPage from "./components/SettingsPage";
+import PdfJobsWidget from "./components/PdfJobsWidget";
 import { SettingsProvider } from "./settingsContext";
+import { PdfJobsProvider } from "./pdfJobsContext";
 import "./App.css";
 
+// A saved search's share link is "?savedSearch=<id>" — consumed once on
+// load by SearchPage, which fetches and applies that record.
+function getInitialSavedSearchId() {
+  return new URLSearchParams(window.location.search).get("savedSearch");
+}
+
 export default function App() {
-  const [view, setView] = useState({ name: "home" });
+  const [initialSavedSearchId] = useState(getInitialSavedSearchId);
+  const [view, setView] = useState(() => (initialSavedSearchId ? { name: "search" } : { name: "home" }));
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [sources, setSources] = useState([]);
   const [groups, setGroups] = useState([]);
   const [servers, setServers] = useState([]);
@@ -70,10 +80,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refreshSources();
-    refreshGroups();
-    refreshServers();
-    refreshFiles();
+    Promise.allSettled([refreshSources(), refreshGroups(), refreshServers(), refreshFiles()]).then(() =>
+      setInitialDataLoaded(true)
+    );
     getSettings()
       .then((s) => {
         setRefreshIntervalSeconds(s.refreshIntervalSeconds);
@@ -158,63 +167,72 @@ export default function App() {
 
   return (
     <SettingsProvider value={{ goToPageDelaySeconds }}>
-      <div className="app-shell">
-        <Sidebar
-          sources={sources}
-          groups={groups}
-          files={files}
-          view={view}
-          onSelectHome={goHome}
-          onSelectService={goService}
-          onSelectSearch={goSearch}
-          onSelectSettings={goSettings}
-        />
-        <div className="main-content">
-          <div className="app">
-            {view.name === "home" && (
-              <HomePage
-                summary={summary}
-                loading={summaryLoading}
-                error={summaryError}
-                updatedAt={summaryUpdatedAt}
-                onRefresh={refreshSummary}
-                onSelectService={goService}
-              />
-            )}
+      <PdfJobsProvider>
+        <div className="app-shell">
+          <Sidebar
+            sources={sources}
+            groups={groups}
+            files={files}
+            view={view}
+            onSelectHome={goHome}
+            onSelectService={goService}
+            onSelectSearch={goSearch}
+            onSelectSettings={goSettings}
+          />
+          <div className="main-content">
+            <div className="app">
+              {view.name === "home" && (
+                <HomePage
+                  summary={summary}
+                  loading={summaryLoading}
+                  error={summaryError}
+                  updatedAt={summaryUpdatedAt}
+                  onRefresh={refreshSummary}
+                  onSelectService={goService}
+                />
+              )}
 
-            {view.name === "search" && <SearchPage sources={sources} files={files} />}
+              {view.name === "search" && (
+                <SearchPage
+                  sources={sources}
+                  files={files}
+                  initialSavedSearchId={initialDataLoaded ? initialSavedSearchId : null}
+                />
+              )}
 
-            {view.name === "service" && (
-              <ServiceView
-                key={`${view.sourceId}:${view.service}`}
-                sourceId={view.sourceId}
-                service={view.service}
-                sourceName={view.sourceName}
-                source={sources.find((s) => s.id === view.sourceId)}
-                files={files}
-                refreshIntervalSeconds={refreshIntervalSeconds}
-              />
-            )}
+              {view.name === "service" && (
+                <ServiceView
+                  key={`${view.sourceId}:${view.service}`}
+                  sourceId={view.sourceId}
+                  service={view.service}
+                  sourceName={view.sourceName}
+                  source={sources.find((s) => s.id === view.sourceId)}
+                  files={files}
+                  refreshIntervalSeconds={refreshIntervalSeconds}
+                />
+              )}
 
-            {view.name === "settings" && (
-              <SettingsPage
-                sources={sources}
-                groups={groups}
-                fileCounts={fileCounts}
-                servicesBySource={servicesBySource}
-                servers={servers}
-                refreshIntervalSeconds={refreshIntervalSeconds}
-                goToPageDelaySeconds={goToPageDelaySeconds}
-                onChanged={handleSourcesChanged}
-                onServersChanged={handleServersChanged}
-                onRefreshIntervalChanged={setRefreshIntervalSeconds}
-                onGoToPageDelayChanged={setGoToPageDelaySeconds}
-                onBack={goHome}
-              />
-            )}
+              {view.name === "settings" && (
+                <SettingsPage
+                  sources={sources}
+                  groups={groups}
+                  fileCounts={fileCounts}
+                  servicesBySource={servicesBySource}
+                  servers={servers}
+                  refreshIntervalSeconds={refreshIntervalSeconds}
+                  goToPageDelaySeconds={goToPageDelaySeconds}
+                  onChanged={handleSourcesChanged}
+                  onServersChanged={handleServersChanged}
+                  onRefreshIntervalChanged={setRefreshIntervalSeconds}
+                  onGoToPageDelayChanged={setGoToPageDelaySeconds}
+                  onBack={goHome}
+                />
+              )}
+            </div>
           </div>
+          <PdfJobsWidget />
         </div>
-      </div>
+      </PdfJobsProvider>
     </SettingsProvider>
   );
 }

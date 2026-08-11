@@ -119,17 +119,64 @@ function SourceSection({ source, services, isOpen, onToggle, view, onSelectServi
   );
 }
 
-function GroupSection({ group, groupSources, servicesBySource, isOpen, onToggle, expandedSources, onToggleSource, view, onSelectService }) {
+// Groups can themselves be nested inside other groups (not just hold
+// sources), so this renders itself recursively — each group's body is its
+// child groups first, then its own sources.
+function GroupSection({
+  group,
+  groupsByParent,
+  sourcesByGroupId,
+  servicesBySource,
+  isOpen,
+  expandedGroups,
+  onToggleGroup,
+  expandedSources,
+  onToggleSource,
+  view,
+  onSelectService,
+}) {
+  const childGroups = groupsByParent.get(group.id) || [];
+  const childSources = sourcesByGroupId.get(group.id) || [];
+
   return (
     <div className="sidebar-group">
-      <button type="button" className="sidebar-group-header" aria-expanded={isOpen} onClick={onToggle}>
+      <button
+        type="button"
+        className="sidebar-group-header"
+        aria-expanded={isOpen}
+        onClick={() => onToggleGroup(group.id)}
+      >
         <FolderIcon className="sidebar-group-icon" />
         <span className="sidebar-group-name">{group.name}</span>
+        {group.expiresAt && (
+          <span
+            className="sidebar-source-expiry"
+            title="Läuft automatisch ab — enthaltene Quellen und Untergruppen werden dann mitgelöscht"
+          >
+            {formatExpiry(group.expiresAt)}
+          </span>
+        )}
         <ChevronRightIcon className={`sidebar-source-chevron${isOpen ? " open" : ""}`} />
       </button>
       {isOpen && (
         <div className="sidebar-group-sources">
-          {groupSources.map((s) => (
+          {childGroups.map((cg) => (
+            <GroupSection
+              key={cg.id}
+              group={cg}
+              groupsByParent={groupsByParent}
+              sourcesByGroupId={sourcesByGroupId}
+              servicesBySource={servicesBySource}
+              isOpen={expandedGroups.has(cg.id)}
+              expandedGroups={expandedGroups}
+              onToggleGroup={onToggleGroup}
+              expandedSources={expandedSources}
+              onToggleSource={onToggleSource}
+              view={view}
+              onSelectService={onSelectService}
+            />
+          ))}
+          {childSources.map((s) => (
             <SourceSection
               key={s.id}
               source={s}
@@ -140,7 +187,9 @@ function GroupSection({ group, groupSources, servicesBySource, isOpen, onToggle,
               onSelectService={onSelectService}
             />
           ))}
-          {groupSources.length === 0 && <div className="sidebar-empty sidebar-group-empty">Keine Quellen</div>}
+          {childGroups.length === 0 && childSources.length === 0 && (
+            <div className="sidebar-empty sidebar-group-empty">Leer</div>
+          )}
         </div>
       )}
     </div>
@@ -162,7 +211,7 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
     return result;
   }, [files]);
 
-  const groupedSources = useMemo(() => {
+  const sourcesByGroupId = useMemo(() => {
     const map = new Map();
     for (const s of sources) {
       if (!s.groupId) continue;
@@ -171,6 +220,19 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
     }
     return map;
   }, [sources]);
+
+  // Keyed by parentGroupId (null for root-level groups) — a group can now be
+  // nested inside another group, same as a source can be nested in a group.
+  const groupsByParent = useMemo(() => {
+    const map = new Map();
+    for (const g of groups) {
+      const key = g.parentGroupId || null;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(g);
+    }
+    return map;
+  }, [groups]);
+  const rootGroups = groupsByParent.get(null) || [];
 
   const ungroupedSources = useMemo(() => sources.filter((s) => !s.groupId), [sources]);
   const permanentSources = useMemo(() => ungroupedSources.filter((s) => !s.expiresAt), [ungroupedSources]);
@@ -228,11 +290,28 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
     setExpanded((prev) => (prev.has(view.sourceId) ? prev : new Set(prev).add(view.sourceId)));
     const activeSource = sources.find((s) => s.id === view.sourceId);
     if (activeSource?.groupId) {
-      setExpandedGroups((prev) =>
-        prev.has(activeSource.groupId) ? prev : new Set(prev).add(activeSource.groupId)
-      );
+      // Walk the whole ancestor chain, not just the direct group — a nested
+      // group needs every level above it open too, or the active source
+      // stays hidden behind a collapsed parent group.
+      const ancestorIds = [];
+      let currentId = activeSource.groupId;
+      while (currentId) {
+        ancestorIds.push(currentId);
+        currentId = groups.find((g) => g.id === currentId)?.parentGroupId || null;
+      }
+      setExpandedGroups((prev) => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const id of ancestorIds) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     }
-  }, [view, sources]);
+  }, [view, sources, groups]);
 
   function toggleSource(id) {
     setExpanded((prev) => {
@@ -269,14 +348,16 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
       </button>
 
       <div className="sidebar-sources">
-        {groups.map((g) => (
+        {rootGroups.map((g) => (
           <GroupSection
             key={g.id}
             group={g}
-            groupSources={groupedSources.get(g.id) || []}
+            groupsByParent={groupsByParent}
+            sourcesByGroupId={sourcesByGroupId}
             servicesBySource={servicesBySource}
             isOpen={expandedGroups.has(g.id)}
-            onToggle={() => toggleGroup(g.id)}
+            expandedGroups={expandedGroups}
+            onToggleGroup={toggleGroup}
             expandedSources={expanded}
             onToggleSource={toggleSource}
             view={view}

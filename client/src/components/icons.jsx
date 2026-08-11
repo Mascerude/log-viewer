@@ -169,3 +169,13 @@ export function DownloadIcon(props) {
     </svg>
   );
 }
+
+export function LinkIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9.5 14.5 14.5 9.5" />
+      <path d="M10.5 6.5 12 5a3.7 3.7 0 0 1 5.2 5.2l-1.5 1.5" />
+      <path d="M13.5 17.5 12 19a3.7 3.7 0 0 1-5.2-5.2l1.5-1.5" />
+    </svg>
+  );
+}

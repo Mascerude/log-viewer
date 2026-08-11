@@ -1354,6 +1354,20 @@ body.sidebar-resizing .sidebar-resize-handle {
   font-size: 14px;
 }
 
+.global-search-shared-error {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.global-search-shared-error .modal-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
 .settings-success {
   background: color-mix(in srgb, var(--good) 14%, transparent);
   color: var(--good);
@@ -1384,6 +1398,13 @@ body.sidebar-resizing .sidebar-resize-handle {
 
 .source-chip.active {
   border-color: var(--accent-border);
+}
+
+.source-chip.excluded {
+  opacity: 1;
+  color: var(--critical);
+  background: color-mix(in srgb, var(--critical) 14%, transparent);
+  border-color: color-mix(in srgb, var(--critical) 45%, transparent);
 }
 
 .source-chip-missing {
@@ -1876,7 +1897,8 @@ body.sidebar-resizing .sidebar-resize-handle {
   align-items: stretch;
 }
 
-.source-row-editing input {
+.source-row-editing input,
+.source-row-editing select {
   font: inherit;
   font-size: 14px;
   padding: 9px 11px;
@@ -2257,6 +2279,10 @@ body.sidebar-resizing .sidebar-resize-handle {
   text-transform: none;
   font-weight: 500;
   letter-spacing: normal;
+}
+
+.filter-group-hint-exclude {
+  color: var(--critical);
 }
 
 .status-list {
@@ -2911,4 +2937,190 @@ body.sidebar-resizing .sidebar-resize-handle {
 
 .occurrence-pagination {
   margin-top: 0;
+}
+
+/* ---- Background PDF-export jobs (floating widget + modal) ---- */
+
+.pdf-jobs-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 95;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-1);
+  color: var(--text-h);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pdf-jobs-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), var(--shadow);
+}
+
+.pdf-jobs-fab svg:not(.pdf-jobs-fab-ring) {
+  width: 22px;
+  height: 22px;
+}
+
+.pdf-jobs-fab-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.pdf-jobs-fab-ring-track,
+.pdf-jobs-fab-ring-progress {
+  fill: none;
+  stroke-width: 3;
+}
+
+.pdf-jobs-fab-ring-track {
+  stroke: var(--gridline);
+}
+
+.pdf-jobs-fab-ring-progress {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.pdf-jobs-fab-percent {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-jobs-fab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+.pdf-jobs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pdf-job-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+}
+
+.pdf-job-row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pdf-job-row-title {
+  font-weight: 600;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-job-row-status {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pdf-job-row-error .pdf-job-row-status {
+  color: var(--critical);
+}
+
+.pdf-job-progress-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gridline);
+  overflow: hidden;
+}
+
+.pdf-job-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.pdf-job-row-done .pdf-job-progress-fill {
+  background: var(--good);
+}
+
+.pdf-job-row-error .pdf-job-progress-fill,
+.pdf-job-row-stopped .pdf-job-progress-fill {
+  background: var(--muted);
+}
+
+.pdf-job-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pdf-job-row-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.pdf-job-row-actions button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pdf-job-row-actions button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+.pdf-job-row-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pdf-job-row-actions button.danger {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 40%, transparent);
 }

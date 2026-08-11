@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addSource,
   deleteSource,
@@ -287,18 +287,42 @@ function SourceRow({ source, fileCount, services, groups, globalRefreshIntervalS
   );
 }
 
-function GroupRow({ group, sourceCount, onChanged }) {
+// A group can't become a member of itself or of any of its own sub-groups —
+// that would create a cycle. Walks the whole tree once to find every group
+// currently nested (at any depth) under `groupId`.
+function getDescendantGroupIds(groupId, allGroups) {
+  const result = new Set();
+  const stack = [groupId];
+  while (stack.length) {
+    const current = stack.pop();
+    for (const g of allGroups) {
+      if (g.parentGroupId === current && !result.has(g.id)) {
+        result.add(g.id);
+        stack.push(g.id);
+      }
+    }
+  }
+  return result;
+}
+
+function GroupRow({ group, groups, sourceCount, childGroupCount, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(group.name);
+  const [parentGroupId, setParentGroupId] = useState(group.parentGroupId || "");
+  const [expiresAt, setExpiresAt] = useState(group.expiresAt || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  const excludedIds = useMemo(() => new Set([group.id, ...getDescendantGroupIds(group.id, groups)]), [group.id, groups]);
+  const parentOptions = groups.filter((g) => !excludedIds.has(g.id));
+  const parentName = groups.find((g) => g.id === group.parentGroupId)?.name;
 
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      await updateGroup(group.id, { name });
+      await updateGroup(group.id, { name, parentGroupId: parentGroupId || null, expiresAt });
       setEditing(false);
       onChanged();
     } catch (err) {
@@ -311,7 +335,7 @@ function GroupRow({ group, sourceCount, onChanged }) {
   async function handleDelete() {
     if (
       !window.confirm(
-        `Gruppe "${group.name}" wirklich entfernen? Enthaltene Quellen werden nicht gelöscht, nur aus der Gruppe entfernt.`
+        `Gruppe "${group.name}" wirklich entfernen? Enthaltene Quellen und Untergruppen werden nicht gelöscht, nur aus der Gruppe entfernt.`
       )
     )
       return;
@@ -323,6 +347,23 @@ function GroupRow({ group, sourceCount, onChanged }) {
     return (
       <form className="source-row source-row-editing" onSubmit={handleSave}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
+        {parentOptions.length > 0 && (
+          <select value={parentGroupId} onChange={(e) => setParentGroupId(e.target.value)}>
+            <option value="">Keine übergeordnete Gruppe</option>
+            {parentOptions.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <label
+          className="source-expiry-field"
+          title="Optional. Macht die Gruppe temporär — beim Ablauf werden auch alle enthaltenen Quellen und Untergruppen gelöscht, nicht nur ausgegruppt."
+        >
+          Ablaufdatum (optional)
+          <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+        </label>
         <div className="source-row-actions">
           <button type="submit" disabled={saving}>
             {saving ? "Speichert..." : "Speichern"}
@@ -339,9 +380,21 @@ function GroupRow({ group, sourceCount, onChanged }) {
   return (
     <div className="source-row">
       <div className="source-info">
-        <span className="source-name">{group.name}</span>
+        <span className="source-name">
+          {group.name}
+          {parentName && <span className="group-badge">in {parentName}</span>}
+          {group.expiresAt && (
+            <span
+              className="expiry-badge"
+              title="Läuft automatisch ab — enthaltene Quellen und Untergruppen werden dann mitgelöscht"
+            >
+              läuft ab {formatExpiryDate(group.expiresAt)}
+            </span>
+          )}
+        </span>
         <span className="source-meta">
           {sourceCount} Quelle{sourceCount === 1 ? "" : "n"}
+          {childGroupCount > 0 && `, ${childGroupCount} Untergruppe${childGroupCount === 1 ? "" : "n"}`}
         </span>
       </div>
       <div className="source-row-actions">
@@ -358,6 +411,8 @@ function GroupRow({ group, sourceCount, onChanged }) {
 
 function GroupsCard({ groups, sources, onChanged }) {
   const [name, setName] = useState("");
+  const [parentGroupId, setParentGroupId] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState(null);
 
@@ -378,8 +433,10 @@ function GroupsCard({ groups, sources, onChanged }) {
     setAdding(true);
     setError(null);
     try {
-      await addGroup({ name });
+      await addGroup({ name, parentGroupId: parentGroupId || null, expiresAt });
       setName("");
+      setParentGroupId("");
+      setExpiresAt("");
       onChanged();
     } catch (err) {
       setError(err.message);
@@ -393,7 +450,8 @@ function GroupsCard({ groups, sources, onChanged }) {
       <h2>Gruppen</h2>
       <p className="chart-subtitle">
         Fasse Log-Quellen zu aufklappbaren Gruppen in der Navigation links zusammen. Eine Quelle
-        lässt sich beim Bearbeiten einer Gruppe zuordnen.
+        lässt sich beim Bearbeiten einer Gruppe zuordnen — und eine Gruppe lässt sich selbst wieder
+        einer anderen Gruppe unterordnen, um verschachtelte Gruppen zu bilden.
       </p>
 
       <div className="source-list">
@@ -409,7 +467,9 @@ function GroupsCard({ groups, sources, onChanged }) {
           >
             <GroupRow
               group={g}
+              groups={groups}
               sourceCount={sources.filter((s) => s.groupId === g.id).length}
+              childGroupCount={groups.filter((other) => other.parentGroupId === g.id).length}
               onChanged={onChanged}
             />
           </DraggableRow>
@@ -427,6 +487,23 @@ function GroupsCard({ groups, sources, onChanged }) {
             onChange={(e) => setName(e.target.value)}
             required
           />
+          {groups.length > 0 && (
+            <select value={parentGroupId} onChange={(e) => setParentGroupId(e.target.value)}>
+              <option value="">Keine übergeordnete Gruppe</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <label
+            className="source-expiry-inline"
+            title="Optional. Macht die Gruppe temporär — beim Ablauf werden auch alle enthaltenen Quellen und Untergruppen gelöscht, nicht nur ausgegruppt."
+          >
+            Ablaufdatum
+            <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          </label>
           <button type="submit" disabled={adding}>
             {adding ? "Fügt hinzu..." : "Hinzufügen"}
           </button>

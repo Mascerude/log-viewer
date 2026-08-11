@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { getLogs } from "../api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getLogs, getSavedSearch } from "../api";
 import { SearchIcon, CloseIcon, RefreshIcon } from "./icons";
 import LogTable from "./LogTable";
 import FilterBar from "./FilterBar";
@@ -19,11 +19,18 @@ function pairKey(sourceId, service) {
   return JSON.stringify([sourceId, service]);
 }
 
-export default function SearchPage({ sources, files }) {
+export default function SearchPage({ sources, files, initialSavedSearchId }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedSourceIds, setSelectedSourceIds] = useState(() => new Set());
   const [selectedServiceKeys, setSelectedServiceKeys] = useState(() => new Set());
+  const [excludedServiceKeys, setExcludedServiceKeys] = useState(() => new Set());
+  // Controls what clicking a service chip does — "include" (default, the
+  // long-standing behaviour: restrict results to only the picked services)
+  // or "exclude" (new: keep everything except the picked services). A chip
+  // can only be in one of the two sets at a time; switching a chip's mode
+  // removes it from the other set.
+  const [serviceFilterMode, setServiceFilterMode] = useState("include");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { sortBy, sortDir, toggleSort } = useSort();
@@ -57,6 +64,7 @@ export default function SearchPage({ sources, files }) {
   const [missingWarning, setMissingWarning] = useState(null);
   const [savedSearchesOpen, setSavedSearchesOpen] = useState(false);
   const [saveSearchOpen, setSaveSearchOpen] = useState(false);
+  const [sharedSearchError, setSharedSearchError] = useState(null);
 
   const availableServices = useMemo(() => {
     const relevant = selectedSourceIds.size
@@ -91,6 +99,10 @@ export default function SearchPage({ sources, files }) {
       const next = new Set(Array.from(prev).filter((k) => availableKeys.has(k)));
       return next.size === prev.size ? prev : next;
     });
+    setExcludedServiceKeys((prev) => {
+      const next = new Set(Array.from(prev).filter((k) => availableKeys.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [availableServices]);
 
   useEffect(() => {
@@ -102,6 +114,9 @@ export default function SearchPage({ sources, files }) {
   const servicePairsParam = selectedServiceKeys.size
     ? JSON.stringify(Array.from(selectedServiceKeys).map((k) => JSON.parse(k)))
     : undefined;
+  const excludeServicePairsParam = excludedServiceKeys.size
+    ? JSON.stringify(Array.from(excludedServiceKeys).map((k) => JSON.parse(k)))
+    : undefined;
   const levelParam = filters.levels.size === ALL_LETTERS.size ? undefined : Array.from(filters.levels).join(",");
   const excludeParam = filters.excludeList.length ? JSON.stringify(filters.excludeList) : undefined;
 
@@ -111,6 +126,7 @@ export default function SearchPage({ sources, files }) {
     debouncedQuery,
     selectedSourceIds,
     selectedServiceKeys,
+    excludedServiceKeys,
     pageSize,
     sortBy,
     sortDir,
@@ -132,6 +148,7 @@ export default function SearchPage({ sources, files }) {
   const hasActiveFilters =
     levelParam !== undefined ||
     Boolean(excludeParam) ||
+    Boolean(excludeServicePairsParam) ||
     Boolean(filters.pid) ||
     Boolean(filters.tid) ||
     Boolean(filters.from) ||
@@ -158,6 +175,7 @@ export default function SearchPage({ sources, files }) {
       search: debouncedQuery,
       source: sourceParam,
       servicePairs: servicePairsParam,
+      excludeServicePairs: excludeServicePairsParam,
       from: filters.from,
       to: filters.to,
       fromTime: filters.fromTime,
@@ -183,6 +201,7 @@ export default function SearchPage({ sources, files }) {
     debouncedQuery,
     sourceParam,
     servicePairsParam,
+    excludeServicePairsParam,
     filters.from,
     filters.to,
     filters.fromTime,
@@ -199,30 +218,32 @@ export default function SearchPage({ sources, files }) {
     refreshTick,
   ]);
 
-  const fetchExportPage = useCallback(
-    (pageNum) =>
-      getLogs({
-        search: debouncedQuery,
-        source: sourceParam,
-        servicePairs: servicePairsParam,
-        from: filters.from,
-        to: filters.to,
-        fromTime: filters.fromTime,
-        toTime: filters.toTime,
-        level: levelParam,
-        exclude: excludeParam,
-        excludeMode: filters.excludeMode,
-        pid: filters.pid,
-        tid: filters.tid,
-        sortBy,
-        sortDir,
-        page: pageNum,
-        pageSize,
-      }).then((result) => result.entries),
+  // Same filter/sort params as the getLogs() calls above — handed to a
+  // background PDF-export job (see ExportMenu.jsx/pdfJobsContext.jsx) so it
+  // can re-derive the exact same entries server-side.
+  const exportQuery = useMemo(
+    () => ({
+      search: debouncedQuery,
+      source: sourceParam,
+      servicePairs: servicePairsParam,
+      excludeServicePairs: excludeServicePairsParam,
+      from: filters.from,
+      to: filters.to,
+      fromTime: filters.fromTime,
+      toTime: filters.toTime,
+      level: levelParam,
+      exclude: excludeParam,
+      excludeMode: filters.excludeMode,
+      pid: filters.pid,
+      tid: filters.tid,
+      sortBy,
+      sortDir,
+    }),
     [
       debouncedQuery,
       sourceParam,
       servicePairsParam,
+      excludeServicePairsParam,
       filters.from,
       filters.to,
       filters.fromTime,
@@ -234,7 +255,6 @@ export default function SearchPage({ sources, files }) {
       filters.tid,
       sortBy,
       sortDir,
-      pageSize,
     ]
   );
 
@@ -246,6 +266,10 @@ export default function SearchPage({ sources, files }) {
         name: sources.find((s) => s.id === id)?.name || id,
       })),
       services: Array.from(selectedServiceKeys).map((k) => {
+        const [sourceId, service] = JSON.parse(k);
+        return { sourceId, sourceName: sources.find((s) => s.id === sourceId)?.name || sourceId, service };
+      }),
+      excludedServices: Array.from(excludedServiceKeys).map((k) => {
         const [sourceId, service] = JSON.parse(k);
         return { sourceId, sourceName: sources.find((s) => s.id === sourceId)?.name || sourceId, service };
       }),
@@ -262,7 +286,7 @@ export default function SearchPage({ sources, files }) {
       },
       refreshIntervalSeconds,
     }),
-    [query, selectedSourceIds, selectedServiceKeys, sources, filters, refreshIntervalSeconds]
+    [query, selectedSourceIds, selectedServiceKeys, excludedServiceKeys, sources, filters, refreshIntervalSeconds]
   );
 
   // Applies a saved search, dropping any source/service that no longer
@@ -279,9 +303,18 @@ export default function SearchPage({ sources, files }) {
     const validServices = saved.services.filter((s) => currentServiceKeys.has(pairKey(s.sourceId, s.service)));
     const missingServices = saved.services.filter((s) => !currentServiceKeys.has(pairKey(s.sourceId, s.service)));
 
+    // Older saved searches predate the exclude-services option and won't
+    // have this field at all.
+    const savedExcludedServices = saved.excludedServices || [];
+    const validExcludedServices = savedExcludedServices.filter((s) => currentServiceKeys.has(pairKey(s.sourceId, s.service)));
+    const missingExcludedServices = savedExcludedServices.filter(
+      (s) => !currentServiceKeys.has(pairKey(s.sourceId, s.service))
+    );
+
     setQuery(saved.query || "");
     setSelectedSourceIds(new Set(validSources.map((s) => s.id)));
     setSelectedServiceKeys(new Set(validServices.map((s) => pairKey(s.sourceId, s.service))));
+    setExcludedServiceKeys(new Set(validExcludedServices.map((s) => pairKey(s.sourceId, s.service))));
     setFilters({
       from: saved.filters?.from || "",
       to: saved.filters?.to || "",
@@ -297,10 +330,33 @@ export default function SearchPage({ sources, files }) {
     setRefreshIntervalSeconds(saved.refreshIntervalSeconds > 0 ? saved.refreshIntervalSeconds : 0);
     setShowFilters(true);
 
-    if (missingSources.length > 0 || missingServices.length > 0) {
-      setMissingWarning({ name: saved.name, missingSources, missingServices });
+    if (missingSources.length > 0 || missingServices.length > 0 || missingExcludedServices.length > 0) {
+      setMissingWarning({
+        name: saved.name,
+        missingSources,
+        missingServices: [...missingServices, ...missingExcludedServices],
+      });
     }
   }
+
+  // Consumes a "?savedSearch=<id>" share link exactly once: fetch that
+  // record and apply it the same way clicking it in the browse modal would,
+  // then strip the param so a later reload/refresh starts from a clean URL
+  // instead of re-applying it every time.
+  const consumedSharedSearch = useRef(false);
+  useEffect(() => {
+    if (!initialSavedSearchId || consumedSharedSearch.current) return;
+    consumedSharedSearch.current = true;
+    getSavedSearch(initialSavedSearchId)
+      .then((saved) => {
+        handleLoadSavedSearch(saved);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("savedSearch");
+        window.history.replaceState({}, "", url);
+      })
+      .catch(() => setSharedSearchError("Die verlinkte gespeicherte Suche wurde nicht gefunden oder wurde gelöscht."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSavedSearchId, sources, files]);
 
   function toggleSource(id) {
     setSelectedSourceIds((prev) => {
@@ -311,13 +367,36 @@ export default function SearchPage({ sources, files }) {
     });
   }
 
-  function toggleService(key) {
-    setSelectedServiceKeys((prev) => {
+  function removeFromSet(setter, key) {
+    setter((prev) => {
+      if (!prev.has(key)) return prev;
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      next.delete(key);
       return next;
     });
+  }
+
+  // Clicking a chip toggles its membership in whichever set the current
+  // mode targets, and clears it from the other one — a service is either
+  // included, excluded, or neither, never both at once.
+  function toggleService(key) {
+    if (serviceFilterMode === "exclude") {
+      setExcludedServiceKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      removeFromSet(setSelectedServiceKeys, key);
+    } else {
+      setSelectedServiceKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      removeFromSet(setExcludedServiceKeys, key);
+    }
   }
 
   return (
@@ -383,25 +462,54 @@ export default function SearchPage({ sources, files }) {
         {availableServices.length > 1 && (
           <div className="global-search-filter-group">
             <span className="filter-group-title">
-              Services{selectedServiceKeys.size > 0 && (
+              Services
+              {selectedServiceKeys.size > 0 && (
                 <span className="filter-group-hint"> ({selectedServiceKeys.size} ausgewählt)</span>
               )}
+              {excludedServiceKeys.size > 0 && (
+                <span className="filter-group-hint filter-group-hint-exclude"> ({excludedServiceKeys.size} ausgeschlossen)</span>
+              )}
             </span>
+            <div className="exclude-mode-toggle" role="group" aria-label="Service-Filtermodus">
+              <button
+                type="button"
+                className={`exclude-mode-chip${serviceFilterMode === "include" ? " active" : ""}`}
+                onClick={() => setServiceFilterMode("include")}
+                aria-pressed={serviceFilterMode === "include"}
+                title="Ausgewählte Services einschließen — nur diese durchsuchen"
+              >
+                Einschließen
+              </button>
+              <button
+                type="button"
+                className={`exclude-mode-chip${serviceFilterMode === "exclude" ? " active" : ""}`}
+                onClick={() => setServiceFilterMode("exclude")}
+                aria-pressed={serviceFilterMode === "exclude"}
+                title="Ausgewählte Services ausschließen — alle anderen durchsuchen"
+              >
+                Ausschließen
+              </button>
+            </div>
             <div className="filter-group source-toggles wrap-toggles" role="group" aria-label="Service einschränken">
-              {availableServices.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  className={`level-chip source-chip${selectedServiceKeys.has(s.key) ? " active" : ""}`}
-                  onClick={() => toggleService(s.key)}
-                  aria-pressed={selectedServiceKeys.has(s.key)}
-                >
-                  {s.service}
-                  {serviceNameCounts.get(s.service) > 1 && (
-                    <span className="chip-source-hint"> ({s.sourceName})</span>
-                  )}
-                </button>
-              ))}
+              {availableServices.map((s) => {
+                const isIncluded = selectedServiceKeys.has(s.key);
+                const isExcluded = excludedServiceKeys.has(s.key);
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className={`level-chip source-chip${isIncluded ? " active" : ""}${isExcluded ? " excluded" : ""}`}
+                    onClick={() => toggleService(s.key)}
+                    aria-pressed={isIncluded || isExcluded}
+                    title={isExcluded ? "Wird ausgeschlossen" : undefined}
+                  >
+                    {s.service}
+                    {serviceNameCounts.get(s.service) > 1 && (
+                      <span className="chip-source-hint"> ({s.sourceName})</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -423,6 +531,15 @@ export default function SearchPage({ sources, files }) {
           missingServices={missingWarning.missingServices}
           onClose={() => setMissingWarning(null)}
         />
+      )}
+
+      {sharedSearchError && (
+        <div className="settings-result settings-error global-search-shared-error">
+          {sharedSearchError}
+          <button type="button" className="modal-close" onClick={() => setSharedSearchError(null)} aria-label="Schließen">
+            <CloseIcon />
+          </button>
+        </div>
       )}
 
       {showFilters && <FilterBar filters={filters} onChange={setFilters} showSearch={false} />}
@@ -466,7 +583,7 @@ export default function SearchPage({ sources, files }) {
             sortBy={sortBy}
             sortDir={sortDir}
             onSortChange={toggleSort}
-            onFetchPage={fetchExportPage}
+            exportQuery={exportQuery}
           />
         </>
       ) : (

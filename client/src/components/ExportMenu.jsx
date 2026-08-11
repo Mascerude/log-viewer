@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { DownloadIcon } from "./icons";
-import { downloadLogEntriesPdf } from "../exportPdf";
+import { usePdfJobs } from "../pdfJobsContext";
 
-// Exports the current table as a real PDF file, downloaded directly (see
-// exportPdf.js). "Seite X bis Y" and "Alle Seiten" need pages beyond the one
-// already loaded, so they re-fetch through `onFetchPage` — the same
-// query/filters/sort the table is already showing, just a different page
-// number — and concatenate the results before sending them off for export.
+// Starts a background PDF-export job (see pdfJobsContext.jsx) for the
+// current table. "Seite X bis Y" and "Alle Seiten" don't need the client to
+// fetch anything extra anymore — the job is handed `exportQuery` (the exact
+// same filter/sort params the table itself uses) plus the requested page
+// range, and re-derives + paginates the entries itself server-side.
 export default function ExportMenu({
-  entries,
   page,
   pageCount,
+  pageSize,
   total,
   showSource,
   showService,
   title,
   filename,
-  onFetchPage,
+  exportQuery,
+  exportKind,
 }) {
+  const { startJob } = usePdfJobs();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("current");
   const [fromPage, setFromPage] = useState(page);
@@ -41,29 +43,28 @@ export default function ExportMenu({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
 
-  async function fetchPages(lo, hi) {
-    const chunks = [];
-    for (let p = lo; p <= hi; p++) {
-      chunks.push(await onFetchPage(p));
-    }
-    return chunks.flat();
-  }
-
   async function handleExport() {
     setExporting(true);
     setError(null);
     try {
-      let exportEntries;
+      let range = {};
       if (mode === "current") {
-        exportEntries = entries;
-      } else if (mode === "all") {
-        exportEntries = await fetchPages(1, pageCount);
-      } else {
+        range = { fromPage: page, toPage: page, pageSize };
+      } else if (mode === "range") {
         const lo = Math.max(1, Math.min(fromPage, toPage));
         const hi = Math.min(pageCount, Math.max(fromPage, toPage));
-        exportEntries = await fetchPages(lo, hi);
+        range = { fromPage: lo, toPage: hi, pageSize };
       }
-      await downloadLogEntriesPdf(exportEntries, { title, filename: filename || title, showSource, showService });
+      // mode === "all" sends no fromPage/toPage — the job returns everything.
+      await startJob({
+        kind: exportKind,
+        title,
+        filename: filename || title,
+        showSource,
+        showService,
+        ...exportQuery,
+        ...range,
+      });
       setOpen(false);
     } catch (err) {
       setError(err.message);
@@ -116,7 +117,7 @@ export default function ExportMenu({
           </label>
 
           <button type="button" onClick={handleExport} disabled={exporting}>
-            {exporting ? "Lädt PDF herunter..." : "Als PDF herunterladen"}
+            {exporting ? "Job wird gestartet..." : "Als PDF exportieren"}
           </button>
           {error && <div className="settings-result settings-error export-menu-error">{error}</div>}
         </div>

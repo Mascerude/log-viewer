@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getLogs, getStats } from "../api";
 import { LEVEL_LETTERS, LEVEL_NAMES_BY_LETTER, LEVEL_ORDER } from "../levelColors";
 import FilterBar from "./FilterBar";
@@ -186,28 +186,26 @@ export default function ServiceView({ sourceId, service, sourceName, source, fil
     refreshTick,
   ]);
 
-  // Reused by the export menu to fetch pages beyond the one currently
-  // loaded, with the exact same filters/sort — just a different page number.
-  const fetchExportPage = useCallback(
-    (pageNum) =>
-      getLogs({
-        from: filters.from,
-        to: filters.to,
-        fromTime: filters.fromTime,
-        toTime: filters.toTime,
-        level: levelParam,
-        source: sourceId,
-        service,
-        search: debouncedSearch,
-        exclude: excludeParam,
-        excludeMode: filters.excludeMode,
-        pid: filters.pid,
-        tid: filters.tid,
-        sortBy,
-        sortDir,
-        page: pageNum,
-        pageSize,
-      }).then((result) => result.entries),
+  // Same filter/sort params as the getLogs() calls above — handed to a
+  // background PDF-export job (see ExportMenu.jsx/pdfJobsContext.jsx) so it
+  // can re-derive the exact same entries server-side.
+  const exportQuery = useMemo(
+    () => ({
+      from: filters.from,
+      to: filters.to,
+      fromTime: filters.fromTime,
+      toTime: filters.toTime,
+      level: levelParam,
+      source: sourceId,
+      service,
+      search: debouncedSearch,
+      exclude: excludeParam,
+      excludeMode: filters.excludeMode,
+      pid: filters.pid,
+      tid: filters.tid,
+      sortBy,
+      sortDir,
+    }),
     [
       filters.from,
       filters.to,
@@ -223,7 +221,6 @@ export default function ServiceView({ sourceId, service, sourceName, source, fil
       filters.tid,
       sortBy,
       sortDir,
-      pageSize,
     ]
   );
 
@@ -306,7 +303,7 @@ export default function ServiceView({ sourceId, service, sourceName, source, fil
         sortBy={sortBy}
         sortDir={sortDir}
         onSortChange={toggleSort}
-        onFetchPage={fetchExportPage}
+        exportQuery={exportQuery}
         filename={exportFilename}
       />
     </div>

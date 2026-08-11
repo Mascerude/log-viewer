@@ -31,7 +31,7 @@ export default function LogTable({
   sortBy,
   sortDir,
   onSortChange,
-  onFetchPage,
+  exportQuery,
   title = "Log-Einträge",
   filename,
 }) {
@@ -49,15 +49,16 @@ export default function LogTable({
             {total.toLocaleString("de-DE")} Einträge{loading ? " · lädt..." : ""}
           </span>
           <ExportMenu
-            entries={entries}
             page={page}
             pageCount={pageCount}
+            pageSize={pageSize}
             total={total}
             showSource={showSource}
             showService={showService}
             title={title}
             filename={filename}
-            onFetchPage={onFetchPage}
+            exportQuery={exportQuery}
+            exportKind="logs"
           />
         </div>
       </div>

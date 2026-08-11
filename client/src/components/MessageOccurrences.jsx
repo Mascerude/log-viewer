@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getMessageOccurrences } from "../api";
 import { LEVEL_COLORS } from "../levelColors";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
@@ -71,12 +71,12 @@ export default function MessageOccurrences({ entry }) {
   const showMessage = mode === "similar";
   const colCount = 4 + (showSource ? 1 : 0) + (showService ? 1 : 0) + (showMessage ? 1 : 0);
 
-  const fetchExportPage = useCallback(
-    (pageNum) =>
-      getMessageOccurrences({ message, scope, mode, sourceId, service, sortBy, sortDir, page: pageNum, pageSize }).then(
-        (result) => result.entries
-      ),
-    [message, scope, mode, sourceId, service, sortBy, sortDir, pageSize]
+  // Same params as the getMessageOccurrences() call above — handed to a
+  // background PDF-export job (see ExportMenu.jsx/pdfJobsContext.jsx) so it
+  // can re-derive the exact same entries server-side.
+  const exportQuery = useMemo(
+    () => ({ message, scope, mode, sourceId, service, sortBy, sortDir }),
+    [message, scope, mode, sourceId, service, sortBy, sortDir]
   );
 
   return (
@@ -138,14 +138,15 @@ export default function MessageOccurrences({ entry }) {
         <CompareToolbar count={selected.size} onClear={clear} onCompare={() => setCompareOpen(true)} />
         {counts && (
           <ExportMenu
-            entries={entries}
             page={page}
             pageCount={pageCount}
+            pageSize={pageSize}
             total={counts.total}
             showSource={showSource}
             showService={showService}
             title="Nachricht-Vorkommen"
-            onFetchPage={fetchExportPage}
+            exportQuery={exportQuery}
+            exportKind="message-occurrences"
           />
         )}
       </div>
