@@ -31,6 +31,10 @@ export default function SearchPage({ sources, files, initialSavedSearchId }) {
   // can only be in one of the two sets at a time; switching a chip's mode
   // removes it from the other set.
   const [serviceFilterMode, setServiceFilterMode] = useState("include");
+  // Name of the saved search currently loaded, if any — used as the base for
+  // the PDF export filename (see exportFilenameBase below) so an exported
+  // file can be traced back to the search it came from.
+  const [loadedSavedSearchName, setLoadedSavedSearchName] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { sortBy, sortDir, toggleSort } = useSort();
@@ -258,6 +262,10 @@ export default function SearchPage({ sources, files, initialSavedSearchId }) {
     ]
   );
 
+  // Base name for a PDF export (ExportMenu.jsx appends the export timestamp)
+  // — the loaded saved search's name if there is one, else a generic label.
+  const exportFilenameBase = loadedSavedSearchName || "Suchergebnisse";
+
   const savePayload = useMemo(
     () => ({
       query,
@@ -312,6 +320,7 @@ export default function SearchPage({ sources, files, initialSavedSearchId }) {
     );
 
     setQuery(saved.query || "");
+    setLoadedSavedSearchName(saved.name || null);
     setSelectedSourceIds(new Set(validSources.map((s) => s.id)));
     setSelectedServiceKeys(new Set(validServices.map((s) => pairKey(s.sourceId, s.service))));
     setExcludedServiceKeys(new Set(validExcludedServices.map((s) => pairKey(s.sourceId, s.service))));
@@ -570,6 +579,7 @@ export default function SearchPage({ sources, files, initialSavedSearchId }) {
           </div>
           <LogTable
             title="Suchergebnisse"
+            filename={exportFilenameBase}
             entries={results.entries}
             total={results.total}
             page={page}

@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { DownloadIcon } from "./icons";
 import { usePdfJobs } from "../pdfJobsContext";
 
+// "DD.MM.YYYY_HH-mm" — a hyphen rather than a colon in the time so the
+// filename stays valid on Windows without needing extra sanitizing.
+function exportTimestamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
 // Starts a background PDF-export job (see pdfJobsContext.jsx) for the
 // current table. "Seite X bis Y" and "Alle Seiten" don't need the client to
 // fetch anything extra anymore — the job is handed `exportQuery` (the exact
@@ -59,7 +67,7 @@ export default function ExportMenu({
       await startJob({
         kind: exportKind,
         title,
-        filename: filename || title,
+        filename: `${filename || title || "export"}_${exportTimestamp()}`,
         showSource,
         showService,
         ...exportQuery,
