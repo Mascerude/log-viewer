@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import crypto from "crypto";
 import { execFile } from "child_process";
 import { fileURLToPath } from "url";
@@ -22,6 +23,20 @@ const SAVED_SEARCHES_PATH = path.resolve("saved-searches.json");
 const DEFAULT_REFRESH_SECONDS = 30;
 const DEFAULT_GOTO_PAGE_DELAY_SECONDS = 1.5;
 const MONITOR_INTERVAL_MS = 30_000;
+// "Fehler pro Quelle" traffic-light thresholds (see /api/error-counts) —
+// count >= critical wins over >= warning, so misconfiguring critical below
+// warning just makes everything past critical show red instead of erroring.
+const DEFAULT_ERROR_WARNING_THRESHOLD = 1;
+const DEFAULT_ERROR_CRITICAL_THRESHOLD = 10;
+
+// Rendered PDF-export jobs are written here rather than kept as in-memory
+// Buffers (see "Background PDF export jobs" below) — a handful of large,
+// undeleted exports could otherwise exhaust the process's heap. Wiped and
+// recreated on every startup since jobs themselves don't survive a restart
+// either, so anything left here is orphaned (e.g. from a crash).
+const PDF_JOB_DIR = path.join(os.tmpdir(), "log-viewer-pdf-jobs");
+fs.rmSync(PDF_JOB_DIR, { recursive: true, force: true });
+fs.mkdirSync(PDF_JOB_DIR, { recursive: true });
 
 // Production build of the client (created by `npm run build` in client/), served
 // alongside the API so the app runs as a single process on a single port —
@@ -53,6 +68,10 @@ function loadConfig() {
         typeof parsed.refreshIntervalSeconds === "number" ? parsed.refreshIntervalSeconds : null,
       goToPageDelaySeconds:
         typeof parsed.goToPageDelaySeconds === "number" ? parsed.goToPageDelaySeconds : null,
+      errorWarningThreshold:
+        typeof parsed.errorWarningThreshold === "number" ? parsed.errorWarningThreshold : null,
+      errorCriticalThreshold:
+        typeof parsed.errorCriticalThreshold === "number" ? parsed.errorCriticalThreshold : null,
     };
   } catch {
     // no config.json yet, or unreadable — fall through to defaults
@@ -64,13 +83,19 @@ function loadConfig() {
     legacySavedSearches: null,
     refreshIntervalSeconds: null,
     goToPageDelaySeconds: null,
+    errorWarningThreshold: null,
+    errorCriticalThreshold: null,
   };
 }
 
 function saveConfig() {
   fs.writeFileSync(
     CONFIG_PATH,
-    JSON.stringify({ sources, groups, servers, refreshIntervalSeconds, goToPageDelaySeconds }, null, 2),
+    JSON.stringify(
+      { sources, groups, servers, refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold },
+      null,
+      2
+    ),
     "utf-8"
   );
 }
@@ -112,6 +137,8 @@ let servers = loaded.servers || [];
 for (const s of servers) if (!Array.isArray(s.services)) s.services = [];
 let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SECONDS;
 let goToPageDelaySeconds = loaded.goToPageDelaySeconds ?? DEFAULT_GOTO_PAGE_DELAY_SECONDS;
+let errorWarningThreshold = loaded.errorWarningThreshold || DEFAULT_ERROR_WARNING_THRESHOLD;
+let errorCriticalThreshold = loaded.errorCriticalThreshold || DEFAULT_ERROR_CRITICAL_THRESHOLD;
 
 const loadedSavedSearches = loadSavedSearchesFile();
 let savedSearchFolders = loadedSavedSearches?.folders || [];
@@ -760,7 +787,7 @@ app.delete("/api/servers/:id/services/:serviceId", (req, res) => {
 // ---- App settings ----
 
 app.get("/api/settings", (req, res) => {
-  res.json({ refreshIntervalSeconds, goToPageDelaySeconds });
+  res.json({ refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold });
 });
 
 app.put("/api/settings", (req, res) => {
@@ -779,8 +806,23 @@ app.put("/api/settings", (req, res) => {
     }
     goToPageDelaySeconds = Math.round(value * 100) / 100;
   }
+  if ("errorWarningThreshold" in body || "errorCriticalThreshold" in body) {
+    const nextWarning = "errorWarningThreshold" in body ? body.errorWarningThreshold : errorWarningThreshold;
+    const nextCritical = "errorCriticalThreshold" in body ? body.errorCriticalThreshold : errorCriticalThreshold;
+    if (!Number.isInteger(nextWarning) || nextWarning < 1) {
+      return res.status(400).json({ error: "Der Warn-Schwellenwert muss eine ganze Zahl ab 1 sein." });
+    }
+    if (!Number.isInteger(nextCritical) || nextCritical < 1) {
+      return res.status(400).json({ error: "Der Kritisch-Schwellenwert muss eine ganze Zahl ab 1 sein." });
+    }
+    if (nextCritical < nextWarning) {
+      return res.status(400).json({ error: "Der Kritisch-Schwellenwert darf nicht kleiner als der Warn-Schwellenwert sein." });
+    }
+    errorWarningThreshold = nextWarning;
+    errorCriticalThreshold = nextCritical;
+  }
   saveConfig();
-  res.json({ refreshIntervalSeconds, goToPageDelaySeconds });
+  res.json({ refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold });
 });
 
 // ---- Saved searches (global search page) ----
@@ -1170,10 +1212,38 @@ function drawEntriesTable(doc, entries, { title, showSource, showService }) {
 // posts the assembled entries and waits for the PDF), a job is handed just
 // the filter/search parameters and re-derives the entries itself — which
 // makes real progress reporting possible (files read so far) and lets the
-// job keep running independently of the request/tab that started it. Jobs
-// live only in memory, like sources/groups/servers, and are lost on a
-// server restart.
+// job keep running independently of the request/tab that started it. Job
+// *records* live only in memory, like sources/groups/servers, and are lost
+// on a server restart; the rendered PDF itself lives on disk (PDF_JOB_DIR)
+// rather than in memory, and MAX_RETAINED_PDF_JOBS bounds how many
+// undeleted exports can pile up — both guard against exhausting the
+// process's heap if exports are large and nobody clicks "Löschen".
 const pdfJobs = [];
+const MAX_RETAINED_PDF_JOBS = 20;
+
+function pdfJobFilePath(job) {
+  return path.join(PDF_JOB_DIR, `${job.id}.pdf`);
+}
+
+function cleanupJobFile(job) {
+  fs.rm(pdfJobFilePath(job), { force: true }, () => {});
+}
+
+// Keeps at most MAX_RETAINED_PDF_JOBS around, oldest first — a job still
+// running is never evicted, only finished/errored/stopped ones once the cap
+// is exceeded, so a burst of exports can't quietly fill up the disk/heap.
+function pruneOldPdfJobs() {
+  const finished = pdfJobs.filter((j) => j.status !== "running" || j.cancelled).length;
+  if (finished <= MAX_RETAINED_PDF_JOBS) return;
+  let toRemove = finished - MAX_RETAINED_PDF_JOBS;
+  for (let i = pdfJobs.length - 1; i >= 0 && toRemove > 0; i--) {
+    const job = pdfJobs[i];
+    if (job.status === "running" && !job.cancelled) continue;
+    cleanupJobFile(job);
+    pdfJobs.splice(i, 1);
+    toRemove -= 1;
+  }
+}
 
 function pdfJobInfo(job) {
   return {
@@ -1277,19 +1347,24 @@ async function runPdfJob(job, body) {
 
     job.phase = "Erstelle PDF...";
     const doc = new PDFDocument({ margin: 28, size: "A4", layout: "landscape" });
-    const chunks = [];
-    doc.on("data", (chunk) => chunks.push(chunk));
-    const finished = new Promise((resolve) => doc.on("end", resolve));
+    const filePath = pdfJobFilePath(job);
+    const writeStream = fs.createWriteStream(filePath);
+    const finished = new Promise((resolve, reject) => {
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+      doc.on("error", reject);
+    });
+    doc.pipe(writeStream);
     drawEntriesTable(doc, entries, { title: job.title, showSource: job.showSource, showService: job.showService });
     doc.end();
     await finished;
 
     if (job.cancelled) {
       job.status = "stopped";
+      cleanupJobFile(job);
       return;
     }
 
-    job.pdfBuffer = Buffer.concat(chunks);
     job.entryCount = entries.length;
     job.progress = 100;
     job.phase = "Fertig";
@@ -1297,6 +1372,7 @@ async function runPdfJob(job, body) {
   } catch (err) {
     job.status = "error";
     job.error = err.message;
+    cleanupJobFile(job);
   }
 }
 
@@ -1334,10 +1410,10 @@ app.post("/api/pdf-jobs", (req, res) => {
     entryCount: null,
     error: null,
     cancelled: false,
-    pdfBuffer: null,
     createdAt: new Date().toISOString(),
   };
   pdfJobs.unshift(job);
+  pruneOldPdfJobs();
   res.status(201).json(pdfJobInfo(job));
   setImmediate(() => runPdfJob(job, body));
 });
@@ -1356,20 +1432,26 @@ app.post("/api/pdf-jobs/:id/stop", (req, res) => {
 app.delete("/api/pdf-jobs/:id", (req, res) => {
   const index = pdfJobs.findIndex((j) => j.id === req.params.id);
   if (index === -1) return res.status(404).json({ error: "Job nicht gefunden." });
-  pdfJobs[index].cancelled = true;
-  pdfJobs.splice(index, 1);
+  const [job] = pdfJobs.splice(index, 1);
+  job.cancelled = true; // in case runPdfJob is still mid-flight for this job
+  cleanupJobFile(job);
   res.status(204).end();
 });
 
 app.get("/api/pdf-jobs/:id/download", (req, res) => {
   const job = pdfJobs.find((j) => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: "Job nicht gefunden." });
-  if (job.status !== "done" || !job.pdfBuffer) {
+  if (job.status !== "done") {
     return res.status(400).json({ error: "Job ist noch nicht fertig." });
   }
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", buildPdfContentDisposition(job.filename));
-  res.send(job.pdfBuffer);
+  const stream = fs.createReadStream(pdfJobFilePath(job));
+  stream.on("error", () => {
+    if (!res.headersSent) res.status(404).json({ error: "PDF-Datei nicht mehr vorhanden." });
+    else res.end();
+  });
+  stream.pipe(res);
 });
 
 app.get("/api/stats", (req, res) => {
@@ -1422,6 +1504,31 @@ app.get("/api/summary", (req, res) => {
     byService: Array.from(byService.values()).sort((a, b) => b.count - a.count),
     servers: servers.map(serverInfo),
   });
+});
+
+// Error count per source over a caller-chosen window — used by the home
+// page's "Fehler pro Quelle" section (unlike /api/summary's byService, which
+// is hardcoded to a rolling 24h). Every current source is seeded at 0 so a
+// healthy source with no errors still shows up (green indicator), not just
+// the ones that had errors in the window.
+app.get("/api/error-counts", (req, res) => {
+  const hours = Math.max(1, parseInt(req.query.hours, 10) || 24);
+  const sinceMs = Date.now() - hours * 60 * 60 * 1000;
+  const sinceIso = new Date(sinceMs).toISOString();
+  const sinceDate = sinceIso.slice(0, 10);
+
+  const files = getFilesInRange(sinceDate, undefined);
+  const entries = loadEntries(files);
+  const recentErrors = entries.filter((e) => e.timestamp >= sinceIso && (e.level === "E" || e.level === "F"));
+
+  const bySource = new Map();
+  for (const s of sources) bySource.set(s.id, { sourceId: s.id, sourceName: s.name, count: 0 });
+  for (const e of recentErrors) {
+    if (!bySource.has(e.sourceId)) bySource.set(e.sourceId, { sourceId: e.sourceId, sourceName: e.sourceName, count: 0 });
+    bySource.get(e.sourceId).count += 1;
+  }
+
+  res.json({ hours, counts: Array.from(bySource.values()).sort((a, b) => b.count - a.count) });
 });
 
 // SPA fallback: any non-API route serves the client's index.html so client-side

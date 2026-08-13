@@ -1,5 +1,7 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { AlertIcon, RefreshIcon } from "./icons";
+import RecentErrorsSection from "./RecentErrorsSection";
+import ErrorsBySourceSection from "./ErrorsBySourceSection";
 
 function ServiceTooltip({ active, payload }) {
   if (!active || !payload || payload.length === 0) return null;
@@ -15,7 +17,16 @@ function ServiceTooltip({ active, payload }) {
   );
 }
 
-export default function HomePage({ summary, loading, error, updatedAt, onRefresh, onSelectService }) {
+export default function HomePage({
+  summary,
+  loading,
+  error,
+  updatedAt,
+  onRefresh,
+  onSelectService,
+  errorWarningThreshold,
+  errorCriticalThreshold,
+}) {
   const total = summary?.totalErrorsLast24h ?? 0;
   const byService = summary?.byService ?? [];
   const servers = summary?.servers ?? [];
@@ -80,6 +91,13 @@ export default function HomePage({ summary, loading, error, updatedAt, onRefresh
           </ResponsiveContainer>
         )}
       </div>
+
+      <RecentErrorsSection refreshSignal={updatedAt} />
+      <ErrorsBySourceSection
+        refreshSignal={updatedAt}
+        errorWarningThreshold={errorWarningThreshold}
+        errorCriticalThreshold={errorCriticalThreshold}
+      />
 
       <div className="chart-card">
         <div className="chart-header">

@@ -5,6 +5,7 @@ import HomePage from "./components/HomePage";
 import SearchPage from "./components/SearchPage";
 import ServiceView from "./components/ServiceView";
 import SettingsPage from "./components/SettingsPage";
+import ReloadOverviewPage from "./components/ReloadOverviewPage";
 import PdfJobsWidget from "./components/PdfJobsWidget";
 import { SettingsProvider } from "./settingsContext";
 import { PdfJobsProvider } from "./pdfJobsContext";
@@ -26,6 +27,8 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(30);
   const [goToPageDelaySeconds, setGoToPageDelaySeconds] = useState(1.5);
+  const [errorWarningThreshold, setErrorWarningThreshold] = useState(1);
+  const [errorCriticalThreshold, setErrorCriticalThreshold] = useState(10);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [summary, setSummary] = useState(null);
@@ -87,6 +90,8 @@ export default function App() {
       .then((s) => {
         setRefreshIntervalSeconds(s.refreshIntervalSeconds);
         if (s.goToPageDelaySeconds != null) setGoToPageDelaySeconds(s.goToPageDelaySeconds);
+        if (s.errorWarningThreshold != null) setErrorWarningThreshold(s.errorWarningThreshold);
+        if (s.errorCriticalThreshold != null) setErrorCriticalThreshold(s.errorCriticalThreshold);
       })
       .catch(() => {});
   }, [refreshSources, refreshGroups, refreshServers, refreshFiles]);
@@ -99,6 +104,19 @@ export default function App() {
 
   function handleServersChanged() {
     refreshServers();
+  }
+
+  function handleErrorThresholdsChanged({ errorWarningThreshold: warning, errorCriticalThreshold: critical }) {
+    setErrorWarningThreshold(warning);
+    setErrorCriticalThreshold(critical);
+  }
+
+  // Called by ReloadOverviewPage after it re-fetches a single source's file
+  // list on its own schedule — merges just that source's entries into the
+  // shared files state (rest untouched) so the sidebar/home page etc. see
+  // the same fresh data instead of it staying local to that page.
+  function handleSourceFilesReloaded(sourceId, sourceFiles) {
+    setFiles((prev) => [...prev.filter((f) => f.sourceId !== sourceId), ...sourceFiles]);
   }
 
   // Periodically re-check sources/servers/files so the sidebar, home page and
@@ -161,6 +179,9 @@ export default function App() {
   function goSettings() {
     setView({ name: "settings" });
   }
+  function goReloads() {
+    setView({ name: "reloads" });
+  }
   function goService(sourceId, service, sourceName) {
     setView({ name: "service", sourceId, service, sourceName });
   }
@@ -177,6 +198,7 @@ export default function App() {
             onSelectHome={goHome}
             onSelectService={goService}
             onSelectSearch={goSearch}
+            onSelectReloads={goReloads}
             onSelectSettings={goSettings}
           />
           <div className="main-content">
@@ -189,6 +211,8 @@ export default function App() {
                   updatedAt={summaryUpdatedAt}
                   onRefresh={refreshSummary}
                   onSelectService={goService}
+                  errorWarningThreshold={errorWarningThreshold}
+                  errorCriticalThreshold={errorCriticalThreshold}
                 />
               )}
 
@@ -212,6 +236,15 @@ export default function App() {
                 />
               )}
 
+              {view.name === "reloads" && (
+                <ReloadOverviewPage
+                  sources={sources}
+                  fileCounts={fileCounts}
+                  refreshIntervalSeconds={refreshIntervalSeconds}
+                  onSourceReloaded={handleSourceFilesReloaded}
+                />
+              )}
+
               {view.name === "settings" && (
                 <SettingsPage
                   sources={sources}
@@ -221,10 +254,13 @@ export default function App() {
                   servers={servers}
                   refreshIntervalSeconds={refreshIntervalSeconds}
                   goToPageDelaySeconds={goToPageDelaySeconds}
+                  errorWarningThreshold={errorWarningThreshold}
+                  errorCriticalThreshold={errorCriticalThreshold}
                   onChanged={handleSourcesChanged}
                   onServersChanged={handleServersChanged}
                   onRefreshIntervalChanged={setRefreshIntervalSeconds}
                   onGoToPageDelayChanged={setGoToPageDelaySeconds}
+                  onErrorThresholdsChanged={handleErrorThresholdsChanged}
                   onBack={goHome}
                 />
               )}

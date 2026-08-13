@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon, SearchIcon, ChevronRightIcon, FolderIcon } from "./icons";
+import { HomeIcon, SettingsIcon, SearchIcon, RefreshIcon, ChevronRightIcon, FolderIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
@@ -196,7 +196,17 @@ function GroupSection({
   );
 }
 
-export default function Sidebar({ sources, groups, files, view, onSelectHome, onSelectService, onSelectSearch, onSelectSettings }) {
+export default function Sidebar({
+  sources,
+  groups,
+  files,
+  view,
+  onSelectHome,
+  onSelectService,
+  onSelectSearch,
+  onSelectReloads,
+  onSelectSettings,
+}) {
   const servicesBySource = useMemo(() => {
     const map = new Map();
     for (const f of files) {
@@ -401,6 +411,14 @@ export default function Sidebar({ sources, groups, files, view, onSelectHome, on
         onClick={onSelectSearch}
       >
         <SearchIcon className="sidebar-icon" /> Suche
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-reloads${view.name === "reloads" ? " active" : ""}`}
+        onClick={onSelectReloads}
+      >
+        <RefreshIcon className="sidebar-icon" /> Reload-Übersicht
       </button>
 
       <button

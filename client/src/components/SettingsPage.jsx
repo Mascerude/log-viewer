@@ -896,6 +896,74 @@ function GoToPageDelayCard({ goToPageDelaySeconds, onChanged }) {
   );
 }
 
+function ErrorThresholdsCard({ errorWarningThreshold, errorCriticalThreshold, onChanged }) {
+  const [warning, setWarning] = useState(errorWarningThreshold);
+  const [critical, setCritical] = useState(errorCriticalThreshold);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setSaving(true);
+    setResult(null);
+    try {
+      const updated = await updateSettings({
+        errorWarningThreshold: Number(warning),
+        errorCriticalThreshold: Number(critical),
+      });
+      onChanged({
+        errorWarningThreshold: updated.errorWarningThreshold,
+        errorCriticalThreshold: updated.errorCriticalThreshold,
+      });
+      setResult({ type: "success", text: "Gespeichert." });
+    } catch (err) {
+      setResult({ type: "error", text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Fehler-Schwellenwerte</h2>
+      <p className="chart-subtitle">
+        Ab wie vielen Fehlern die "Fehler pro Quelle"-Anzeige auf der Startseite gelb bzw. rot
+        einfärbt.
+      </p>
+      <form onSubmit={handleSave} className="settings-form">
+        <label htmlFor="error-warning-threshold">Gelb ab (Fehleranzahl)</label>
+        <div className="source-add-fields">
+          <input
+            id="error-warning-threshold"
+            type="number"
+            min="1"
+            step="1"
+            value={warning}
+            onChange={(e) => setWarning(e.target.value)}
+            required
+          />
+        </div>
+        <label htmlFor="error-critical-threshold">Rot ab (Fehleranzahl)</label>
+        <div className="source-add-fields">
+          <input
+            id="error-critical-threshold"
+            type="number"
+            min="1"
+            step="1"
+            value={critical}
+            onChange={(e) => setCritical(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={saving}>
+            {saving ? "Speichert..." : "Speichern"}
+          </button>
+        </div>
+      </form>
+      {result && <div className={`settings-result settings-${result.type}`}>{result.text}</div>}
+    </div>
+  );
+}
+
 export default function SettingsPage({
   sources,
   groups,
@@ -904,10 +972,13 @@ export default function SettingsPage({
   servers,
   refreshIntervalSeconds,
   goToPageDelaySeconds,
+  errorWarningThreshold,
+  errorCriticalThreshold,
   onChanged,
   onServersChanged,
   onRefreshIntervalChanged,
   onGoToPageDelayChanged,
+  onErrorThresholdsChanged,
   onBack,
 }) {
   const [name, setName] = useState("");
@@ -1026,6 +1097,12 @@ export default function SettingsPage({
       <RefreshIntervalCard refreshIntervalSeconds={refreshIntervalSeconds} onChanged={onRefreshIntervalChanged} />
 
       <GoToPageDelayCard goToPageDelaySeconds={goToPageDelaySeconds} onChanged={onGoToPageDelayChanged} />
+
+      <ErrorThresholdsCard
+        errorWarningThreshold={errorWarningThreshold}
+        errorCriticalThreshold={errorCriticalThreshold}
+        onChanged={onErrorThresholdsChanged}
+      />
 
       <div className="settings-actions settings-page-actions">
         <button type="button" className="secondary" onClick={onBack}>

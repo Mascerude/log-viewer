@@ -175,6 +175,10 @@ export function getSummary() {
   return get("/summary");
 }
 
+export function getErrorCounts({ hours } = {}) {
+  return get("/error-counts", { hours });
+}
+
 export function getMessageOccurrences({ message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize } = {}) {
   return get("/message-occurrences", { message, scope, mode, sourceId, service, sortBy, sortDir, page, pageSize });
 }
@@ -245,8 +249,18 @@ export function getSettings() {
   return get("/settings");
 }
 
-export function updateSettings({ refreshIntervalSeconds, goToPageDelaySeconds }) {
-  return send("PUT", "/settings", { refreshIntervalSeconds, goToPageDelaySeconds });
+export function updateSettings({
+  refreshIntervalSeconds,
+  goToPageDelaySeconds,
+  errorWarningThreshold,
+  errorCriticalThreshold,
+}) {
+  return send("PUT", "/settings", {
+    refreshIntervalSeconds,
+    goToPageDelaySeconds,
+    errorWarningThreshold,
+    errorCriticalThreshold,
+  });
 }
 
 export function createPdfJob(payload) {

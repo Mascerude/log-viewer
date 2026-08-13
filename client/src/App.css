@@ -104,6 +104,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 
 .sidebar-home,
 .sidebar-search,
+.sidebar-reloads,
 .sidebar-settings {
   display: flex;
   align-items: center;
@@ -128,6 +129,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 
 .sidebar-home.active,
 .sidebar-search.active,
+.sidebar-reloads.active,
 .sidebar-settings.active,
 .sidebar-service.active {
   background: var(--accent-bg);
@@ -137,6 +139,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 
 .sidebar-home:hover,
 .sidebar-search:hover,
+.sidebar-reloads:hover,
 .sidebar-settings:hover,
 .sidebar-service:hover {
   background: var(--code-bg);
@@ -1742,6 +1745,11 @@ body.sidebar-resizing .sidebar-resize-handle {
   white-space: nowrap;
 }
 
+.refresh-badge-global {
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+
 .service-refresh-list {
   display: flex;
   flex-direction: column;
@@ -3123,4 +3131,135 @@ body.sidebar-resizing .sidebar-resize-handle {
 .pdf-job-row-actions button.danger {
   color: var(--critical);
   border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+/* ---- Reload-Übersicht ---- */
+
+.reload-row {
+  align-items: center;
+  gap: 20px;
+}
+
+.reload-row .source-info {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.reload-progress-area {
+  flex: 1 1 200px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reload-progress-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--gridline);
+  overflow: hidden;
+}
+
+.reload-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+
+.reload-countdown {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Collapsible home-page sections ---- */
+
+.collapsible-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.collapsible-toggle h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.collapsible-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.collapsible-chevron.open {
+  transform: rotate(90deg);
+}
+
+.collapsible-subtitle {
+  margin-left: 24px;
+}
+
+.collapsible-body {
+  margin-top: 16px;
+}
+
+.error-count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.error-count-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.error-count-row:last-child {
+  border-bottom: none;
+}
+
+.error-count-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-count-value {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.error-count-value.severity-good {
+  background: color-mix(in srgb, var(--good) 16%, transparent);
+  color: var(--good);
+}
+
+.error-count-value.severity-warning {
+  background: color-mix(in srgb, #fab219 20%, transparent);
+  color: #fab219;
+}
+
+.error-count-value.severity-critical {
+  background: color-mix(in srgb, var(--critical) 16%, transparent);
+  color: var(--critical);
 }
