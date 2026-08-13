@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSources, getGroups, getServers, getFiles, getSettings, getSummary } from "./api";
+import { getSources, getGroups, getServers, getFiles, getSettings, getSummary, getHealth, clearEmergencyMode } from "./api";
+import { errorSeverity } from "./errorSeverity";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
 import SearchPage from "./components/SearchPage";
 import ServiceView from "./components/ServiceView";
 import SettingsPage from "./components/SettingsPage";
 import ReloadOverviewPage from "./components/ReloadOverviewPage";
+import ServerDiagnosticsPage from "./components/ServerDiagnosticsPage";
 import PdfJobsWidget from "./components/PdfJobsWidget";
 import { SettingsProvider } from "./settingsContext";
 import { PdfJobsProvider } from "./pdfJobsContext";
@@ -16,6 +18,11 @@ import "./App.css";
 function getInitialSavedSearchId() {
   return new URLSearchParams(window.location.search).get("savedSearch");
 }
+
+// Per-browser display preference (Einstellungen → "Farbliche Hervorhebung"),
+// not a server setting — different people using the same server may want
+// different amounts of visual noise in their own sidebar.
+const COLORIZE_SIDEBAR_KEY = "colorizeSidebar";
 
 export default function App() {
   const [initialSavedSearchId] = useState(getInitialSavedSearchId);
@@ -30,11 +37,25 @@ export default function App() {
   const [errorWarningThreshold, setErrorWarningThreshold] = useState(1);
   const [errorCriticalThreshold, setErrorCriticalThreshold] = useState(10);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [colorizeSidebar, setColorizeSidebarState] = useState(
+    () => localStorage.getItem(COLORIZE_SIDEBAR_KEY) === "true"
+  );
 
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
   const [summaryUpdatedAt, setSummaryUpdatedAt] = useState(null);
+
+  // Polled independent of refreshIntervalSeconds/view — the heap-warning
+  // banner and the emergency-mode gate (see HomePage/ReloadOverviewPage)
+  // need to stay current regardless of what page is open or what the user
+  // has their own refresh interval set to.
+  const [health, setHealth] = useState({
+    heapPct: 0,
+    heapWarning: false,
+    emergencyMode: false,
+    emergencyReason: null,
+  });
 
   // Guards against overlapping requests (e.g. the initial mount fetch and a
   // fetch triggered right after a Settings change) resolving out of order and
@@ -111,6 +132,11 @@ export default function App() {
     setErrorCriticalThreshold(critical);
   }
 
+  function setColorizeSidebar(value) {
+    setColorizeSidebarState(value);
+    localStorage.setItem(COLORIZE_SIDEBAR_KEY, String(value));
+  }
+
   // Called by ReloadOverviewPage after it re-fetches a single source's file
   // list on its own schedule — merges just that source's entries into the
   // shared files state (rest untouched) so the sidebar/home page etc. see
@@ -135,6 +161,28 @@ export default function App() {
     refreshFiles();
   }, [refreshTick, refreshSources, refreshGroups, refreshServers, refreshFiles]);
 
+  const refreshHealth = useCallback(() => {
+    return getHealth()
+      .then(setHealth)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshHealth();
+    const id = setInterval(refreshHealth, 10_000);
+    return () => clearInterval(id);
+  }, [refreshHealth]);
+
+  // Doesn't swallow errors — the server refuses to clear while the heap is
+  // still genuinely critical, and the banner needs to show that message
+  // rather than silently no-op.
+  function handleClearEmergency() {
+    return clearEmergencyMode().then((h) => {
+      setHealth(h);
+      return h;
+    });
+  }
+
   const refreshSummary = useCallback(() => {
     setSummaryLoading(true);
     setSummaryError(null);
@@ -147,10 +195,13 @@ export default function App() {
       .finally(() => setSummaryLoading(false));
   }, []);
 
+  // Also kept fresh outside the home page when sidebar colorization is on
+  // (its byService breakdown is what that's colored from) — otherwise only
+  // fetched while actually looking at the home page's chart.
   useEffect(() => {
-    if (view.name !== "home") return;
+    if (view.name !== "home" && !colorizeSidebar) return;
     refreshSummary();
-  }, [view.name, refreshTick, refreshSummary]);
+  }, [view.name, refreshTick, refreshSummary, colorizeSidebar]);
 
   const fileCounts = useMemo(() => {
     const counts = {};
@@ -170,6 +221,52 @@ export default function App() {
     return result;
   }, [files]);
 
+  // Sidebar colorization (see setColorizeSidebar) — 24h error counts per
+  // service come straight from the rolling summary already fetched above;
+  // per-source is those summed by sourceId, per-group is per-source summed
+  // recursively through the (possibly nested) group tree. All empty objects
+  // when the setting is off, which is enough for Sidebar's lookups to
+  // resolve to "no severity" without it needing to know the setting itself.
+  const sourceErrorCounts = useMemo(() => {
+    const counts = {};
+    for (const s of summary?.byService || []) counts[s.sourceId] = (counts[s.sourceId] || 0) + s.count;
+    return counts;
+  }, [summary]);
+
+  const serviceSeverity = useMemo(() => {
+    if (!colorizeSidebar) return {};
+    const map = {};
+    for (const s of summary?.byService || []) {
+      map[`${s.sourceId}::${s.service}`] = errorSeverity(s.count, errorWarningThreshold, errorCriticalThreshold);
+    }
+    return map;
+  }, [summary, colorizeSidebar, errorWarningThreshold, errorCriticalThreshold]);
+
+  const sourceSeverity = useMemo(() => {
+    if (!colorizeSidebar) return {};
+    const map = {};
+    for (const s of sources) {
+      map[s.id] = errorSeverity(sourceErrorCounts[s.id] || 0, errorWarningThreshold, errorCriticalThreshold);
+    }
+    return map;
+  }, [sources, sourceErrorCounts, colorizeSidebar, errorWarningThreshold, errorCriticalThreshold]);
+
+  const groupSeverity = useMemo(() => {
+    if (!colorizeSidebar) return {};
+    const totals = {};
+    function sumGroup(groupId) {
+      if (totals[groupId] !== undefined) return totals[groupId];
+      let total = 0;
+      for (const s of sources) if (s.groupId === groupId) total += sourceErrorCounts[s.id] || 0;
+      for (const g of groups) if (g.parentGroupId === groupId) total += sumGroup(g.id);
+      totals[groupId] = total;
+      return total;
+    }
+    const map = {};
+    for (const g of groups) map[g.id] = errorSeverity(sumGroup(g.id), errorWarningThreshold, errorCriticalThreshold);
+    return map;
+  }, [groups, sources, sourceErrorCounts, colorizeSidebar, errorWarningThreshold, errorCriticalThreshold]);
+
   function goHome() {
     setView({ name: "home" });
   }
@@ -181,6 +278,9 @@ export default function App() {
   }
   function goReloads() {
     setView({ name: "reloads" });
+  }
+  function goDiagnostics() {
+    setView({ name: "diagnostics" });
   }
   function goService(sourceId, service, sourceName) {
     setView({ name: "service", sourceId, service, sourceName });
@@ -199,7 +299,11 @@ export default function App() {
             onSelectService={goService}
             onSelectSearch={goSearch}
             onSelectReloads={goReloads}
+            onSelectDiagnostics={goDiagnostics}
             onSelectSettings={goSettings}
+            sourceSeverity={sourceSeverity}
+            serviceSeverity={serviceSeverity}
+            groupSeverity={groupSeverity}
           />
           <div className="main-content">
             <div className="app">
@@ -213,6 +317,9 @@ export default function App() {
                   onSelectService={goService}
                   errorWarningThreshold={errorWarningThreshold}
                   errorCriticalThreshold={errorCriticalThreshold}
+                  health={health}
+                  onClearEmergency={handleClearEmergency}
+                  onSelectDiagnostics={goDiagnostics}
                 />
               )}
 
@@ -242,8 +349,11 @@ export default function App() {
                   fileCounts={fileCounts}
                   refreshIntervalSeconds={refreshIntervalSeconds}
                   onSourceReloaded={handleSourceFilesReloaded}
+                  emergencyMode={health.emergencyMode}
                 />
               )}
+
+              {view.name === "diagnostics" && <ServerDiagnosticsPage />}
 
               {view.name === "settings" && (
                 <SettingsPage
@@ -261,6 +371,8 @@ export default function App() {
                   onRefreshIntervalChanged={setRefreshIntervalSeconds}
                   onGoToPageDelayChanged={setGoToPageDelaySeconds}
                   onErrorThresholdsChanged={handleErrorThresholdsChanged}
+                  colorizeSidebar={colorizeSidebar}
+                  onColorizeSidebarChanged={setColorizeSidebar}
                   onBack={goHome}
                 />
               )}

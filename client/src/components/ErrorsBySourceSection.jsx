@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { getErrorCounts } from "../api";
+import { errorSeverity } from "../errorSeverity";
 import CollapsibleSection from "./CollapsibleSection";
+import { RefreshIcon } from "./icons";
 
 const WINDOWS = [
   { label: "24 Std.", hours: 24 },
@@ -9,28 +11,30 @@ const WINDOWS = [
   { label: "1 Woche", hours: 168 },
 ];
 
-// Traffic light, thresholds configurable in Einstellungen (Fehler-Schwellenwerte).
-function severity(count, warningThreshold, criticalThreshold) {
-  if (count >= criticalThreshold) return "critical";
-  if (count >= warningThreshold) return "warning";
-  return "good";
-}
+// A year — generous for "eigene Stunden", but keeps a mistyped huge number
+// from triggering a full-history scan across every source.
+const MAX_CUSTOM_HOURS = 8760;
 
 // Error count per source over a chosen time window, with a red/amber/green
 // indicator per row — collapsed by default so nothing is fetched until
 // opened. Separate from the "Fehler nach Service (24h)" chart above (that
 // one is per-service and fixed to 24h; this is per-source with a wider,
 // user-chosen window, going back up to a week or a custom value).
-export default function ErrorsBySourceSection({ refreshSignal, errorWarningThreshold = 1, errorCriticalThreshold = 10 }) {
+//
+// Deliberately does NOT auto-refresh on a timer (see RecentErrorsSection.jsx
+// for why) — fetches once per open/window change, plus an explicit
+// "Aktualisieren" button.
+export default function ErrorsBySourceSection({ errorWarningThreshold = 1, errorCriticalThreshold = 10 }) {
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState(24);
   const [customOpen, setCustomOpen] = useState(false);
   const [customHours, setCustomHours] = useState("");
-  const hours = customOpen ? Math.max(1, parseInt(customHours, 10) || 24) : preset;
+  const hours = customOpen ? Math.min(MAX_CUSTOM_HOURS, Math.max(1, parseInt(customHours, 10) || 24)) : preset;
 
   const [counts, setCounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -40,7 +44,7 @@ export default function ErrorsBySourceSection({ refreshSignal, errorWarningThres
       .then((res) => setCounts(res.counts))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [open, hours, refreshSignal]);
+  }, [open, hours, reloadTick]);
 
   return (
     <CollapsibleSection
@@ -74,13 +78,18 @@ export default function ErrorsBySourceSection({ refreshSignal, errorWarningThres
           <input
             type="number"
             min="1"
+            max={MAX_CUSTOM_HOURS}
             className="export-range-input"
             placeholder="Stunden"
             value={customHours}
             onChange={(e) => setCustomHours(e.target.value)}
             aria-label="Eigener Zeitraum in Stunden"
+            title={`Bis zu ${MAX_CUSTOM_HOURS} Stunden (1 Jahr)`}
           />
         )}
+        <button type="button" className="settings-button" onClick={() => setReloadTick((t) => t + 1)} disabled={loading}>
+          <RefreshIcon className={loading ? "icon-spin" : undefined} /> Aktualisieren
+        </button>
       </div>
 
       {error && <div className="table-error">{error}</div>}
@@ -93,7 +102,7 @@ export default function ErrorsBySourceSection({ refreshSignal, errorWarningThres
             <div key={c.sourceId} className="error-count-row">
               <span className="error-count-name">{c.sourceName}</span>
               <span
-                className={`error-count-value severity-${severity(c.count, errorWarningThreshold, errorCriticalThreshold)}`}
+                className={`error-count-value severity-${errorSeverity(c.count, errorWarningThreshold, errorCriticalThreshold)}`}
               >
                 {c.count.toLocaleString("de-DE")}
               </span>

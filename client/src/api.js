@@ -254,12 +254,16 @@ export function updateSettings({
   goToPageDelaySeconds,
   errorWarningThreshold,
   errorCriticalThreshold,
+  maxHeapMB,
+  heapWarningPct,
 }) {
   return send("PUT", "/settings", {
     refreshIntervalSeconds,
     goToPageDelaySeconds,
     errorWarningThreshold,
     errorCriticalThreshold,
+    maxHeapMB,
+    heapWarningPct,
   });
 }
 
@@ -279,6 +283,30 @@ export function deletePdfJob(id) {
   return send("DELETE", `/pdf-jobs/${id}`);
 }
 
+export function deleteAllPdfJobs() {
+  return send("DELETE", "/pdf-jobs");
+}
+
 export function pdfJobDownloadUrl(id) {
   return `/api/pdf-jobs/${id}/download`;
+}
+
+export function getDiagnostics() {
+  return get("/diagnostics");
+}
+
+export function forceGc() {
+  return send("POST", "/diagnostics/gc");
+}
+
+export function getHealth() {
+  return get("/health");
+}
+
+export function clearEmergencyMode() {
+  return send("POST", "/health/clear-emergency");
+}
+
+export function clearParseCache() {
+  return send("POST", "/diagnostics/clear-cache");
 }

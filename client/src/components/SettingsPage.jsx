@@ -21,6 +21,7 @@ import {
 } from "../api";
 import useReorderableList from "../useReorderableList";
 import { GripIcon } from "./icons";
+import ToggleSwitch from "./ToggleSwitch";
 
 function PathInputWithBrowse({ value, onChange, id }) {
   const [browsing, setBrowsing] = useState(false);
@@ -964,6 +965,25 @@ function ErrorThresholdsCard({ errorWarningThreshold, errorCriticalThreshold, on
   );
 }
 
+// Client-only display preference (localStorage, not saved to config.json) —
+// unlike every other setting on this page, this one is per browser/device,
+// not shared server-wide. See App.jsx's colorizeSidebar state.
+function SidebarColorizeCard({ colorizeSidebar, onChanged }) {
+  return (
+    <div className="settings-card">
+      <h2>Farbliche Hervorhebung</h2>
+      <p className="chart-subtitle">
+        Färbt Quellen, Services und Gruppen in der Seitenleiste nach ihrer Fehleranzahl der
+        letzten 24 Stunden ein (gleiche Schwellenwerte wie oben). Gilt nur für dieses Gerät bzw.
+        diesen Browser, nicht serverweit.
+      </p>
+      <ToggleSwitch checked={colorizeSidebar} onChange={onChanged} variant="accent">
+        Seitenleiste einfärben
+      </ToggleSwitch>
+    </div>
+  );
+}
+
 export default function SettingsPage({
   sources,
   groups,
@@ -974,11 +994,13 @@ export default function SettingsPage({
   goToPageDelaySeconds,
   errorWarningThreshold,
   errorCriticalThreshold,
+  colorizeSidebar,
   onChanged,
   onServersChanged,
   onRefreshIntervalChanged,
   onGoToPageDelayChanged,
   onErrorThresholdsChanged,
+  onColorizeSidebarChanged,
   onBack,
 }) {
   const [name, setName] = useState("");
@@ -1103,6 +1125,8 @@ export default function SettingsPage({
         errorCriticalThreshold={errorCriticalThreshold}
         onChanged={onErrorThresholdsChanged}
       />
+
+      <SidebarColorizeCard colorizeSidebar={colorizeSidebar} onChanged={onColorizeSidebarChanged} />
 
       <div className="settings-actions settings-page-actions">
         <button type="button" className="secondary" onClick={onBack}>

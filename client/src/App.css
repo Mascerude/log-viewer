@@ -105,6 +105,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-home,
 .sidebar-search,
 .sidebar-reloads,
+.sidebar-diagnostics,
 .sidebar-settings {
   display: flex;
   align-items: center;
@@ -130,6 +131,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-home.active,
 .sidebar-search.active,
 .sidebar-reloads.active,
+.sidebar-diagnostics.active,
 .sidebar-settings.active,
 .sidebar-service.active {
   background: var(--accent-bg);
@@ -140,6 +142,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-home:hover,
 .sidebar-search:hover,
 .sidebar-reloads:hover,
+.sidebar-diagnostics:hover,
 .sidebar-settings:hover,
 .sidebar-service:hover {
   background: var(--code-bg);
@@ -3262,4 +3265,170 @@ body.sidebar-resizing .sidebar-resize-handle {
 .error-count-value.severity-critical {
   background: color-mix(in srgb, var(--critical) 16%, transparent);
   color: var(--critical);
+}
+
+.section-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.settings-button.danger {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+/* ---- Server-Diagnose ---- */
+
+.diagnostics-heap-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0;
+}
+
+.diagnostics-heap-bar .reload-progress-track {
+  height: 10px;
+}
+
+.diagnostics-section-label {
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+.diagnostics-rss-bar {
+  display: flex;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--gridline);
+}
+
+.diagnostics-rss-segment {
+  height: 100%;
+}
+
+.rss-seg-heap {
+  background: var(--accent);
+}
+
+.rss-seg-external {
+  background: var(--good);
+}
+
+.rss-seg-other {
+  background: var(--muted);
+}
+
+.diagnostics-rss-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.diagnostics-rss-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagnostics-rss-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ---- Heap warning / emergency-mode banner (Startseite) ---- */
+
+.heap-banner {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+}
+
+.heap-banner-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+}
+
+.heap-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.heap-banner-body p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.heap-banner-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.heap-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.heap-banner-warning {
+  background: color-mix(in srgb, #fab219 14%, transparent);
+  border: 1px solid color-mix(in srgb, #fab219 40%, transparent);
+}
+
+.heap-banner-warning .heap-banner-icon {
+  color: #fab219;
+}
+
+.heap-banner-emergency {
+  background: color-mix(in srgb, var(--critical) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent);
+}
+
+.heap-banner-emergency .heap-banner-icon {
+  color: var(--critical);
+}
+
+/* ---- Sidebar colorization (Einstellungen → Farbliche Hervorhebung) ---- */
+
+.sidebar-source-header.sidebar-severity-good,
+.sidebar-group-header.sidebar-severity-good,
+.sidebar-service.sidebar-severity-good {
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+}
+
+.sidebar-source-header.sidebar-severity-warning,
+.sidebar-group-header.sidebar-severity-warning,
+.sidebar-service.sidebar-severity-warning {
+  background: color-mix(in srgb, #fab219 16%, transparent);
+}
+
+.sidebar-source-header.sidebar-severity-critical,
+.sidebar-group-header.sidebar-severity-critical,
+.sidebar-service.sidebar-severity-critical {
+  background: color-mix(in srgb, var(--critical) 16%, transparent);
+}
+
+/* The currently-open service should still read as "selected" over the
+   severity tint rather than blend into an ambiguous color. */
+.sidebar-service.active.sidebar-severity-good,
+.sidebar-service.active.sidebar-severity-warning,
+.sidebar-service.active.sidebar-severity-critical {
+  background: var(--accent-bg);
+  color: var(--accent);
 }

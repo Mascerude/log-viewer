@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { createPdfJob, deletePdfJob, getPdfJobs, pdfJobDownloadUrl, stopPdfJob } from "./api";
+import { createPdfJob, deleteAllPdfJobs, deletePdfJob, getPdfJobs, pdfJobDownloadUrl, stopPdfJob } from "./api";
 
 const PdfJobsContext = createContext(null);
 
@@ -56,6 +56,11 @@ export function PdfJobsProvider({ children }) {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   }, []);
 
+  const deleteAllJobs = useCallback(async () => {
+    await deleteAllPdfJobs();
+    setJobs([]);
+  }, []);
+
   const downloadJob = useCallback((job) => {
     const a = document.createElement("a");
     a.href = pdfJobDownloadUrl(job.id);
@@ -65,8 +70,8 @@ export function PdfJobsProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ jobs, startJob, stopJob, deleteJob, downloadJob }),
-    [jobs, startJob, stopJob, deleteJob, downloadJob]
+    () => ({ jobs, startJob, stopJob, deleteJob, deleteAllJobs, downloadJob, refreshJobs }),
+    [jobs, startJob, stopJob, deleteJob, deleteAllJobs, downloadJob, refreshJobs]
   );
 
   return <PdfJobsContext.Provider value={value}>{children}</PdfJobsContext.Provider>;

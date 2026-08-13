@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon, SearchIcon, RefreshIcon, ChevronRightIcon, FolderIcon } from "./icons";
+import { HomeIcon, SettingsIcon, SearchIcon, RefreshIcon, AlertIcon, ChevronRightIcon, FolderIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
@@ -73,12 +73,22 @@ function computeAutoFitWidth(sources, groups, files) {
   return fit > 0 ? clampWidth(fit) : null;
 }
 
-function SourceSection({ source, services, isOpen, onToggle, view, onSelectService }) {
+function SourceSection({
+  source,
+  services,
+  isOpen,
+  onToggle,
+  view,
+  onSelectService,
+  sourceSeverity,
+  serviceSeverity,
+}) {
+  const ownSeverity = sourceSeverity[source.id];
   return (
     <div className="sidebar-source">
       <button
         type="button"
-        className="sidebar-source-header"
+        className={`sidebar-source-header${ownSeverity ? ` sidebar-severity-${ownSeverity}` : ""}`}
         title={source.path}
         aria-expanded={isOpen}
         onClick={onToggle}
@@ -100,11 +110,14 @@ function SourceSection({ source, services, isOpen, onToggle, view, onSelectServi
         <ul className="sidebar-services">
           {services.map((svc) => {
             const active = view.name === "service" && view.sourceId === source.id && view.service === svc;
+            const svcSeverity = serviceSeverity[`${source.id}::${svc}`];
             return (
               <li key={svc}>
                 <button
                   type="button"
-                  className={`sidebar-service${active ? " active" : ""}`}
+                  className={`sidebar-service${active ? " active" : ""}${
+                    svcSeverity ? ` sidebar-severity-${svcSeverity}` : ""
+                  }`}
                   onClick={() => onSelectService(source.id, svc, source.name)}
                 >
                   {svc}
@@ -134,15 +147,19 @@ function GroupSection({
   onToggleSource,
   view,
   onSelectService,
+  sourceSeverity,
+  serviceSeverity,
+  groupSeverity,
 }) {
   const childGroups = groupsByParent.get(group.id) || [];
   const childSources = sourcesByGroupId.get(group.id) || [];
+  const ownSeverity = groupSeverity[group.id];
 
   return (
     <div className="sidebar-group">
       <button
         type="button"
-        className="sidebar-group-header"
+        className={`sidebar-group-header${ownSeverity ? ` sidebar-severity-${ownSeverity}` : ""}`}
         aria-expanded={isOpen}
         onClick={() => onToggleGroup(group.id)}
       >
@@ -174,6 +191,9 @@ function GroupSection({
               onToggleSource={onToggleSource}
               view={view}
               onSelectService={onSelectService}
+              sourceSeverity={sourceSeverity}
+              serviceSeverity={serviceSeverity}
+              groupSeverity={groupSeverity}
             />
           ))}
           {childSources.map((s) => (
@@ -185,6 +205,8 @@ function GroupSection({
               onToggle={() => onToggleSource(s.id)}
               view={view}
               onSelectService={onSelectService}
+              sourceSeverity={sourceSeverity}
+              serviceSeverity={serviceSeverity}
             />
           ))}
           {childGroups.length === 0 && childSources.length === 0 && (
@@ -205,7 +227,11 @@ export default function Sidebar({
   onSelectService,
   onSelectSearch,
   onSelectReloads,
+  onSelectDiagnostics,
   onSelectSettings,
+  sourceSeverity = {},
+  serviceSeverity = {},
+  groupSeverity = {},
 }) {
   const servicesBySource = useMemo(() => {
     const map = new Map();
@@ -372,6 +398,9 @@ export default function Sidebar({
             onToggleSource={toggleSource}
             view={view}
             onSelectService={onSelectService}
+            sourceSeverity={sourceSeverity}
+            serviceSeverity={serviceSeverity}
+            groupSeverity={groupSeverity}
           />
         ))}
 
@@ -384,6 +413,8 @@ export default function Sidebar({
             onToggle={() => toggleSource(s.id)}
             view={view}
             onSelectService={onSelectService}
+            sourceSeverity={sourceSeverity}
+            serviceSeverity={serviceSeverity}
           />
         ))}
 
@@ -399,6 +430,8 @@ export default function Sidebar({
                 onToggle={() => toggleSource(s.id)}
                 view={view}
                 onSelectService={onSelectService}
+                sourceSeverity={sourceSeverity}
+                serviceSeverity={serviceSeverity}
               />
             ))}
           </>
@@ -419,6 +452,14 @@ export default function Sidebar({
         onClick={onSelectReloads}
       >
         <RefreshIcon className="sidebar-icon" /> Reload-Übersicht
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-diagnostics${view.name === "diagnostics" ? " active" : ""}`}
+        onClick={onSelectDiagnostics}
+      >
+        <AlertIcon className="sidebar-icon" /> Server-Diagnose
       </button>
 
       <button

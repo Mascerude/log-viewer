@@ -3,7 +3,9 @@
 Webapp zum visuellen Anzeigen und Filtern von Logs aus Textdateien (ein
 Dateiname pro Tag), mit mehreren benannten Log-Quellen (z.B. Servern),
 Quelle→Service-Navigation, Auto-Refresh und einer Startseite mit
-24h-Fehlerübersicht.
+Fehlerübersicht (24h-Diagramm, konfigurierbare "Fehler pro Quelle"-Ampel,
+letzte Fehler über alle Quellen). PDF-Exporte laufen als Hintergrund-Job
+weiter, während man normal weiterarbeitet.
 
 - `server/` — Node/Express-Backend, liest & parst die Log-Dateien aus den
   konfigurierten Quellen-Ordnern
@@ -113,13 +115,21 @@ werden die darin gefundenen Services (aus den Dateinamen geparst) als
 Unterpunkte aufgelistet.
 
 Quellen lassen sich außerdem zu **Gruppen** zusammenfassen (aufklappbar in
-der Sidebar) und sowohl Quellen als auch Gruppen per Drag & Drop
+der Sidebar), und Gruppen können selbst wieder Mitglied einer anderen
+Gruppe sein — beliebig tief verschachtelbar (mit Schutz vor zirkulären
+Zuordnungen). Sowohl Quellen als auch Gruppen lassen sich per Drag & Drop
 umsortieren. Eine Quelle kann ein **Ablaufdatum** bekommen — praktisch für
 temporäre Einsätze, sie verschwindet danach automatisch (aus Sidebar,
-Suche, allem) ohne Serverneustart. Optional lässt sich pro Quelle und
-sogar pro einzelnem Service ein **eigenes** Aktualisierungsintervall
+Suche, allem) ohne Serverneustart. **Gruppen** können ebenfalls ein
+Ablaufdatum bekommen; läuft eine Gruppe ab, werden alle darin enthaltenen
+Quellen und Untergruppen automatisch mitgelöscht (nicht nur ausgruppiert
+wie beim manuellen Löschen einer Gruppe). Optional lässt sich pro Quelle
+und sogar pro einzelnem Service ein **eigenes** Aktualisierungsintervall
 setzen, das den globalen Wert überschreibt (siehe unten,
-"Automatische Aktualisierung").
+"Automatische Aktualisierung") — die **Reload-Übersicht** (eigener
+Sidebar-Punkt) zeigt für jede Quelle live, wann ihre Dateiliste als
+Nächstes automatisch neu geladen wird, mit Fortschrittsanzeige und
+manuellem Sofort-Reload-Button.
 
 ## Server (⚙ Einstellungen)
 
@@ -141,8 +151,22 @@ Liste zur Infrastruktur-Überwachung:
 ## Startseite
 
 Zeigt die Gesamtzahl aller Fehler/Fatal-Einträge der letzten rollierenden
-24 Stunden (Balkendiagramm pro Service), sowie den Server-Status aller
-konfigurierten Server samt ihrer Services.
+24 Stunden (Balkendiagramm pro Service, Klick auf einen Balken öffnet den
+Service), sowie den Server-Status aller konfigurierten Server samt ihrer
+Services.
+
+Darunter zwei ausklappbare Abschnitte (klappen erst bei Bedarf auf, laden
+also nicht ungefragt Daten nach):
+
+- **Letzte Fehler** — die zuletzt aufgetretenen Fehler/Fatal-Einträge über
+  alle Quellen hinweg, wählbare Anzahl (20/50/100/200/eigener Wert) —
+  technisch dieselbe Tabelle wie in der Service-Ansicht, inkl. Sortierung,
+  Mehrfachauswahl/Vergleich, Detailansicht und PDF-Export.
+- **Fehler pro Quelle** — Fehleranzahl je Quelle über einen wählbaren
+  Zeitraum (24h/48h/72h/1 Woche/eigene Stundenzahl), mit einer
+  Ampel-Einfärbung der Zahl selbst (grün/gelb/rot). Die Schwellenwerte, ab
+  wann gelb bzw. rot angezeigt wird, sind unter Einstellungen →
+  "Fehler-Schwellenwerte" konfigurierbar (Standard: gelb ab 1, rot ab 10).
 
 ## Suche (globale Suche)
 
@@ -154,6 +178,19 @@ Heißt ein Service in mehreren Quellen gleich, wird der Quellenname in
 Klammern ergänzt, damit die Auswahl eindeutig bleibt — die Filterung
 selbst bleibt dabei exakt auf die jeweilige Quelle+Service-Kombination
 beschränkt.
+
+Services lassen sich nicht nur ein-, sondern auch **ausschließen**: ein
+Umschalter ("Einschließen"/"Ausschließen") bestimmt, ob ein Klick auf einen
+Service-Chip ihn in die Ergebnisse aufnimmt oder gezielt daraus entfernt —
+praktisch, um z.B. einen bekannt lauten Service auszublenden, ohne alle
+anderen einzeln auswählen zu müssen. Ein Service ist dabei immer nur
+eingeschlossen, ausgeschlossen oder neutral, nie beides gleichzeitig.
+
+Suchen (inkl. Filter, Quellen-/Service-Auswahl und Ausschlüsse) lassen sich
+benannt **speichern** und in Ordnern organisieren, jederzeit wieder laden
+und per Link teilen (`?savedSearch=<id>`); fehlt beim Laden eine
+zwischenzeitlich gelöschte Quelle/ein gelöschter Service, warnt ein Hinweis
+statt die Auswahl still zu verfälschen.
 
 Sobald mindestens eine Quelle oder ein Service ausgewählt ist, werden auch
 ohne Suchbegriff sofort alle deren Nachrichten angezeigt — nützlich, um
@@ -205,9 +242,8 @@ Die Log-Tabelle:
 - **Kopieren**: "Für Support-Ticket kopieren" (formatiert für Azure DevOps
   oder als Klartext) sowie ein eigener Button nur für die Nachricht
 - **Als PDF exportieren**: aktuelle Seite, ein Seitenbereich oder alle
-  Treffer — als echte, tabellenförmige PDF-Datei direkt heruntergeladen
-  (Dateiname automatisch aus Quelle, Service, Levels und Zeitraum
-  zusammengesetzt)
+  Treffer — läuft als Hintergrund-Job (siehe unten), Tabelle bleibt
+  sofort weiter bedienbar
 
 Die Ansicht aktualisiert sich automatisch im konfigurierbaren Intervall und
 lässt sich jederzeit manuell per Klick sofort neu laden. Das Intervall gilt
@@ -216,22 +252,55 @@ mindestens 1s, bis zu 2 Nachkommastellen), lässt sich aber pro Quelle und
 sogar pro einzelnem Service überschreiben — Priorität: Service-Override >
 Quellen-Override > globaler Wert.
 
+## PDF-Export (Hintergrund-Job)
+
+Ein Klick auf "Als PDF exportieren" (Service-Ansicht, Suche oder
+"Nachricht suchen") startet einen **Job auf dem Server**, statt die
+Oberfläche blockierend auf die fertige Datei warten zu lassen — beliebig
+viele Exporte lassen sich gleichzeitig anstoßen, auch während man
+weiterklickt oder die Seite wechselt. Ein Icon unten rechts zeigt einen
+Fortschrittsring, solange mindestens ein Export läuft; Klick öffnet ein
+Fenster mit allen Jobs:
+
+- **Fortschrittsbalken** je Job (Dateien laden → filtern/sortieren →
+  PDF erstellen)
+- **Stoppen** eines laufenden Jobs, **Löschen** (räumt auch das
+  Zwischenergebnis auf) und **Herunterladen** des fertigen PDFs
+- Jobs überleben einen Seiten-Reload (laufen serverseitig weiter), aber
+  nicht einen Server-Neustart
+- Dateiname automatisch aus Quelle/Service/Levels/Zeitraum bzw. dem Namen
+  der geladenen gespeicherten Suche zusammengesetzt, plus Zeitstempel des
+  Exports (`Name_TT.MM.JJJJ_HH-MM.pdf`) — mehrere Exporte überschreiben
+  sich beim Herunterladen also nie gegenseitig
+- Fertige PDFs liegen serverseitig als Datei (nicht im Arbeitsspeicher) und
+  werden automatisch aufgeräumt — sowohl beim Löschen eines Jobs als auch
+  automatisch, sobald mehr als ~20 abgeschlossene Jobs angesammelt sind
+
 ## Features im Überblick
 
 - Mehrere benannte Log-Quellen (Ordner), einzeln hinzufüg-/umbenenn-/
-  entfernbar, per Drag & Drop sortierbar, zu Gruppen zusammenfassbar,
-  optional mit Ablaufdatum (temporäre Quellen)
+  entfernbar, per Drag & Drop sortierbar, zu (beliebig tief verschachtelbaren)
+  Gruppen zusammenfassbar, optional mit Ablaufdatum (temporäre Quellen und
+  Gruppen — bei Gruppen kaskadiert das Löschen auf den kompletten Inhalt)
+- Reload-Übersicht: eigener Sidebar-Punkt, zeigt je Quelle das effektive
+  Aktualisierungsintervall, einen Countdown/Fortschritt bis zum nächsten
+  automatischen Neuladen der Dateiliste und einen Sofort-Reload-Button
 - Eigenständige Server-Überwachung (Ping) mit beliebig vielen Services pro
   Server (`sc query`), komplett unabhängig von den Log-Quellen
 - Sidebar-Navigation: Quelle → Service, direkt aus den vorhandenen
   Dateien abgeleitet, scrollbar und einklappbar
-- Startseite: Fehler der letzten 24h gesamt + pro Service, Server-Status
-- Globale Suche über alle Quellen/Services hinweg, mit Einschränkung und
-  automatischer Namens-Disambiguierung bei Kollisionen; zeigt bei reiner
+- Startseite: Fehler der letzten 24h gesamt + pro Service (Diagramm),
+  Server-Status, sowie zwei ausklappbare Abschnitte — "Letzte Fehler"
+  (wählbare Anzahl über alle Quellen) und "Fehler pro Quelle" (wählbarer
+  Zeitraum, Ampel-Indikator mit konfigurierbaren Schwellenwerten)
+- Globale Suche über alle Quellen/Services hinweg, mit Ein- **und**
+  Ausschließen einzelner Services sowie automatischer
+  Namens-Disambiguierung bei Kollisionen; zeigt bei reiner
   Quellen-/Service-Auswahl auch ohne Suchbegriff alle Nachrichten an, mit
   eigenem, nicht gespeichertem Aktualisierungsintervall für das Ergebnis;
   optional ein-/ausblendbare Filterleiste (Zeitraum, Level, PID, TID,
-  Ausschließen) wie in der Service-Ansicht
+  Ausschließen) wie in der Service-Ansicht; Suchen lassen sich benannt
+  speichern, in Ordnern organisieren und per Link teilen
 - Modernes, für Light/Dark-Mode optimiertes Design
 - Service-Ansicht: Tages-Diagramm (bidirektional mit Filtern synchron),
   Tabelle, Filter (Zeitraum inkl. Uhrzeit, Level, PID, TID, Suche,
@@ -246,7 +315,8 @@ Quellen-Override > globaler Wert.
   wortweisem Vergleich der Nachrichtentexte
 - Kopieren für Support-Tickets (Azure DevOps-formatiert oder Klartext)
 - PDF-Export der Log-Tabelle (aktuelle Seite/Bereich/alle Treffer) als
-  direkter Datei-Download
+  Hintergrund-Job — mehrere gleichzeitig, Fortschritt/Stop/Download über
+  ein globales Icon, übersteht einen Seiten-Reload
 - Mehrzeilige Nachrichten (Stacktraces, Trace-Suspended-Footer) werden
   korrekt der zugehörigen Log-Zeile zugeordnet und farblich hervorgehoben
 - UTF-16LE-Dateien (mit oder ohne BOM) werden automatisch erkannt

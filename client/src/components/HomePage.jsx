@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { AlertIcon, RefreshIcon } from "./icons";
 import RecentErrorsSection from "./RecentErrorsSection";
@@ -17,6 +18,80 @@ function ServiceTooltip({ active, payload }) {
   );
 }
 
+// Heads-up (>= 90% of the heap limit) or full emergency mode (>= 95%, PDF
+// jobs blocked server-side and Reload-Übersicht's automatic reloads paused
+// — see server/index.js). A real V8 OOM crash can't be caught in JS, so
+// this is the app's only real shot at surfacing the danger before it
+// happens, per the crash logs this session ran into twice already.
+function HeapHealthBanner({ health, onClearEmergency, onSelectDiagnostics }) {
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState(null);
+
+  if (!health.emergencyMode && !health.heapWarning) return null;
+
+  async function handleClear() {
+    setClearing(true);
+    setClearError(null);
+    try {
+      await onClearEmergency();
+    } catch (err) {
+      setClearError(err.message);
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  if (health.emergencyMode) {
+    return (
+      <div className="heap-banner heap-banner-emergency">
+        <AlertIcon className="heap-banner-icon" aria-hidden="true" />
+        <div className="heap-banner-body">
+          <div className="heap-banner-title">
+            Notfallmodus aktiv — Speicherverbrauch kritisch ({health.heapPct}%)
+          </div>
+          <p>
+            {health.emergencyReason} PDF-Exporte sind deaktiviert und die automatischen Reloads der
+            Reload-Übersicht pausiert, damit sich der Server erholen kann.
+          </p>
+          <p>
+            <strong>So beheben:</strong> 1) Zur Server-Diagnose gehen · 2) Datei-Cache leeren und/oder Garbage
+            Collection ausführen · 3) Falls das nicht reicht, die maximale Heap-Größe erhöhen und den Server
+            manuell neu starten · 4) Sobald der Verbrauch wieder im normalen Bereich ist, hier den Notfallmodus
+            beenden.
+          </p>
+          <div className="heap-banner-actions">
+            <button type="button" className="settings-button" onClick={onSelectDiagnostics}>
+              Zur Server-Diagnose
+            </button>
+            <button type="button" className="settings-button danger" onClick={handleClear} disabled={clearing}>
+              {clearing ? "Prüft..." : "Notfallmodus beenden"}
+            </button>
+          </div>
+          {clearError && <div className="settings-result settings-error">{clearError}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="heap-banner heap-banner-warning">
+      <AlertIcon className="heap-banner-icon" aria-hidden="true" />
+      <div className="heap-banner-body">
+        <div className="heap-banner-title">Hoher Speicherverbrauch ({health.heapPct}% des Heap-Limits)</div>
+        <p>
+          Empfehlung: auf der Server-Diagnose-Seite eine Garbage Collection ausführen oder den Datei-Cache leeren.
+          Passiert das dauerhaft, die maximale Heap-Größe in den Einstellungen erhöhen und den Server neu starten.
+        </p>
+        <div className="heap-banner-actions">
+          <button type="button" className="settings-button" onClick={onSelectDiagnostics}>
+            Zur Server-Diagnose
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage({
   summary,
   loading,
@@ -26,6 +101,9 @@ export default function HomePage({
   onSelectService,
   errorWarningThreshold,
   errorCriticalThreshold,
+  health,
+  onClearEmergency,
+  onSelectDiagnostics,
 }) {
   const total = summary?.totalErrorsLast24h ?? 0;
   const byService = summary?.byService ?? [];
@@ -34,6 +112,10 @@ export default function HomePage({
 
   return (
     <div className="home-page">
+      {health && (
+        <HeapHealthBanner health={health} onClearEmergency={onClearEmergency} onSelectDiagnostics={onSelectDiagnostics} />
+      )}
+
       <div className="stat-tile-row">
         <div className="stat-tile stat-tile-hero">
           <div className="stat-tile-icon" aria-hidden="true">
@@ -92,9 +174,8 @@ export default function HomePage({
         )}
       </div>
 
-      <RecentErrorsSection refreshSignal={updatedAt} />
+      <RecentErrorsSection />
       <ErrorsBySourceSection
-        refreshSignal={updatedAt}
         errorWarningThreshold={errorWarningThreshold}
         errorCriticalThreshold={errorCriticalThreshold}
       />

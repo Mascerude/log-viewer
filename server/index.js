@@ -8,7 +8,8 @@ import { execFile } from "child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import PDFDocument from "pdfkit";
-import { listLogFiles, parseLogFile } from "./parser.js";
+import v8 from "v8";
+import { listLogFiles, parseLogFile, parseFileName, getCacheStats, clearCache } from "./parser.js";
 
 dotenv.config();
 
@@ -28,6 +29,27 @@ const MONITOR_INTERVAL_MS = 30_000;
 // warning just makes everything past critical show red instead of erroring.
 const DEFAULT_ERROR_WARNING_THRESHOLD = 1;
 const DEFAULT_ERROR_CRITICAL_THRESHOLD = 10;
+// Kept in sync with launcher.js's own default/minimum — this copy is only
+// used to show/validate the *configured* value; the number that actually
+// takes effect is read straight from config.json by launcher.js before this
+// process starts (see there), since V8's heap limit can't be changed live.
+const DEFAULT_MAX_HEAP_MB = 6144;
+const MIN_MAX_HEAP_MB = 512;
+// Heap-usage thresholds (fraction of V8's heap_size_limit — see /api/health):
+// at WARNING, the home page shows a heads-up; at EMERGENCY, the server can't
+// safely be trusted to keep growing memory, so it stops starting new PDF
+// jobs and pauses Reload-Übersicht's automatic reloads until someone clears
+// it (see emergencyMode below) — a real V8 "FATAL ERROR ... heap limit
+// Allocation failed" is a hard process abort with no chance for JS to react,
+// so the only workable approach is catching the dangerous state *before*
+// that point, not after.
+// Warning threshold is configurable (Server-Diagnose page → GET/PUT
+// /api/settings' heapWarningPct); this is only the default and the
+// validation ceiling (must stay below the fixed emergency threshold, else
+// it could never actually show before emergency mode itself kicks in).
+const DEFAULT_HEAP_WARNING_PCT = 90;
+const HEAP_EMERGENCY_PCT = 95;
+const HEAP_CHECK_INTERVAL_MS = 5_000;
 
 // Rendered PDF-export jobs are written here rather than kept as in-memory
 // Buffers (see "Background PDF export jobs" below) — a handful of large,
@@ -72,6 +94,10 @@ function loadConfig() {
         typeof parsed.errorWarningThreshold === "number" ? parsed.errorWarningThreshold : null,
       errorCriticalThreshold:
         typeof parsed.errorCriticalThreshold === "number" ? parsed.errorCriticalThreshold : null,
+      // Read directly by launcher.js before this process even starts (V8's
+      // heap limit can only be set at startup) — see there for details.
+      maxHeapMB: typeof parsed.maxHeapMB === "number" ? parsed.maxHeapMB : null,
+      heapWarningPct: typeof parsed.heapWarningPct === "number" ? parsed.heapWarningPct : null,
     };
   } catch {
     // no config.json yet, or unreadable — fall through to defaults
@@ -85,6 +111,8 @@ function loadConfig() {
     goToPageDelaySeconds: null,
     errorWarningThreshold: null,
     errorCriticalThreshold: null,
+    maxHeapMB: null,
+    heapWarningPct: null,
   };
 }
 
@@ -92,7 +120,17 @@ function saveConfig() {
   fs.writeFileSync(
     CONFIG_PATH,
     JSON.stringify(
-      { sources, groups, servers, refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold },
+      {
+        sources,
+        groups,
+        servers,
+        refreshIntervalSeconds,
+        goToPageDelaySeconds,
+        errorWarningThreshold,
+        errorCriticalThreshold,
+        maxHeapMB,
+        heapWarningPct,
+      },
       null,
       2
     ),
@@ -139,6 +177,8 @@ let refreshIntervalSeconds = loaded.refreshIntervalSeconds || DEFAULT_REFRESH_SE
 let goToPageDelaySeconds = loaded.goToPageDelaySeconds ?? DEFAULT_GOTO_PAGE_DELAY_SECONDS;
 let errorWarningThreshold = loaded.errorWarningThreshold || DEFAULT_ERROR_WARNING_THRESHOLD;
 let errorCriticalThreshold = loaded.errorCriticalThreshold || DEFAULT_ERROR_CRITICAL_THRESHOLD;
+let maxHeapMB = loaded.maxHeapMB || DEFAULT_MAX_HEAP_MB;
+let heapWarningPct = loaded.heapWarningPct || DEFAULT_HEAP_WARNING_PCT;
 
 const loadedSavedSearches = loadSavedSearchesFile();
 let savedSearchFolders = loadedSavedSearches?.folders || [];
@@ -157,6 +197,32 @@ saveConfig();
 setInterval(() => {
   if (pruneExpired()) saveConfig();
 }, MONITOR_INTERVAL_MS);
+
+// ---- Heap emergency mode ----
+//
+// See heapWarningPct/HEAP_EMERGENCY_PCT above for why this exists and why
+// it has to act *before* an actual OOM crash rather than in response to one.
+let emergencyMode = false;
+let emergencyReason = null;
+let emergencyTriggeredAt = null;
+
+function currentHeapPct() {
+  const mem = process.memoryUsage();
+  const limit = v8.getHeapStatistics().heap_size_limit;
+  return limit > 0 ? (mem.heapUsed / limit) * 100 : 0;
+}
+
+setInterval(() => {
+  const pct = currentHeapPct();
+  if (pct >= HEAP_EMERGENCY_PCT && !emergencyMode) {
+    emergencyMode = true;
+    emergencyTriggeredAt = new Date().toISOString();
+    emergencyReason = `Heap-Nutzung erreichte ${Math.round(pct)}% des Limits (${toMB(process.memoryUsage().heapUsed)} MB von ${toMB(
+      v8.getHeapStatistics().heap_size_limit
+    )} MB).`;
+    console.error(`[Notfallmodus] ${emergencyReason}`);
+  }
+}, HEAP_CHECK_INTERVAL_MS);
 
 function sourceInfo(s) {
   return {
@@ -787,7 +853,14 @@ app.delete("/api/servers/:id/services/:serviceId", (req, res) => {
 // ---- App settings ----
 
 app.get("/api/settings", (req, res) => {
-  res.json({ refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold });
+  res.json({
+    refreshIntervalSeconds,
+    goToPageDelaySeconds,
+    errorWarningThreshold,
+    errorCriticalThreshold,
+    maxHeapMB,
+    heapWarningPct,
+  });
 });
 
 app.put("/api/settings", (req, res) => {
@@ -821,8 +894,33 @@ app.put("/api/settings", (req, res) => {
     errorWarningThreshold = nextWarning;
     errorCriticalThreshold = nextCritical;
   }
+  if ("maxHeapMB" in body) {
+    const value = body.maxHeapMB;
+    if (!Number.isInteger(value) || value < MIN_MAX_HEAP_MB) {
+      return res
+        .status(400)
+        .json({ error: `Die Heap-Größe muss eine ganze Zahl ab ${MIN_MAX_HEAP_MB} MB sein.` });
+    }
+    maxHeapMB = value;
+  }
+  if ("heapWarningPct" in body) {
+    const value = body.heapWarningPct;
+    if (!Number.isFinite(value) || value < 1 || value >= HEAP_EMERGENCY_PCT) {
+      return res.status(400).json({
+        error: `Die Warnschwelle muss zwischen 1 und ${HEAP_EMERGENCY_PCT - 1}% liegen (der Notfallmodus greift fest ab ${HEAP_EMERGENCY_PCT}%).`,
+      });
+    }
+    heapWarningPct = value;
+  }
   saveConfig();
-  res.json({ refreshIntervalSeconds, goToPageDelaySeconds, errorWarningThreshold, errorCriticalThreshold });
+  res.json({
+    refreshIntervalSeconds,
+    goToPageDelaySeconds,
+    errorWarningThreshold,
+    errorCriticalThreshold,
+    maxHeapMB,
+    heapWarningPct,
+  });
 });
 
 // ---- Saved searches (global search page) ----
@@ -1382,6 +1480,11 @@ async function runPdfJob(job, body) {
 // "current page" / "page X to Y" / "all pages" choice from ExportMenu.jsx,
 // and title/filename/showSource/showService for rendering.
 app.post("/api/pdf-jobs", (req, res) => {
+  if (emergencyMode) {
+    return res.status(503).json({
+      error: "PDF-Exporte sind im Notfallmodus deaktiviert (kritischer Speicherverbrauch) — siehe Hinweis auf der Startseite.",
+    });
+  }
   const body = req.body || {};
   const { kind, title, filename, showSource, showService } = body;
   if (kind !== "logs" && kind !== "message-occurrences") {
@@ -1438,6 +1541,17 @@ app.delete("/api/pdf-jobs/:id", (req, res) => {
   res.status(204).end();
 });
 
+// Bulk variant for the Server-Diagnose page's "Alle löschen" — same
+// semantics as the single-job delete, just for every job at once.
+app.delete("/api/pdf-jobs", (req, res) => {
+  const removed = pdfJobs.splice(0, pdfJobs.length);
+  for (const job of removed) {
+    job.cancelled = true;
+    cleanupJobFile(job);
+  }
+  res.status(204).end();
+});
+
 app.get("/api/pdf-jobs/:id/download", (req, res) => {
   const job = pdfJobs.find((j) => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: "Job nicht gefunden." });
@@ -1452,6 +1566,160 @@ app.get("/api/pdf-jobs/:id/download", (req, res) => {
     else res.end();
   });
   stream.pipe(res);
+});
+
+// ---- Server diagnostics ----
+//
+// Surfaces process.memoryUsage() and lets the Server-Diagnose page force a
+// GC pass and clear out PDF jobs — added after a couple of production OOM
+// crashes (large/frequent queries piling up faster than V8 could collect)
+// so there's somewhere to actually see it happening and intervene, rather
+// than just restarting the process blind.
+function toMB(bytes) {
+  return Math.round((bytes / (1024 * 1024)) * 10) / 10;
+}
+
+function memoryStats() {
+  const mem = process.memoryUsage();
+  const heapStats = v8.getHeapStatistics();
+  // RSS (the OS-level resident memory) isn't just the heap — it's the heap
+  // plus external Buffers plus everything else V8/Node/native modules keep
+  // outside the JS heap (thread stacks, compiled code, etc.). Surfacing that
+  // remainder ("other") is what actually answers "what's using the RSS
+  // that's not accounted for by heapTotal + external".
+  const otherBytes = Math.max(0, mem.rss - mem.heapTotal - mem.external);
+  return {
+    heapUsedMB: toMB(mem.heapUsed),
+    heapTotalMB: toMB(mem.heapTotal),
+    heapSizeLimitMB: toMB(heapStats.heap_size_limit),
+    rssMB: toMB(mem.rss),
+    externalMB: toMB(mem.external),
+    rssOtherMB: toMB(otherBytes),
+  };
+}
+
+// Per V8 heap space — finer-grained than the aggregate heapUsed/heapTotal,
+// e.g. old_space (long-lived objects, most of our parsed log entries),
+// new_space (short-lived), code_space (compiled JS), large_object_space
+// (big arrays/strings).
+function heapSpaceStats() {
+  return v8.getHeapSpaceStatistics().map((s) => ({
+    name: s.space_name,
+    usedMB: toMB(s.space_used_size),
+    sizeMB: toMB(s.space_size),
+  }));
+}
+
+// Attributes a cached file back to the source it belongs to and parses its
+// service/date out of the filename, purely for display on the Server-Diagnose
+// page — parser.js's cache itself only knows file paths, not sources.
+function enrichCacheFile(f) {
+  const dir = path.dirname(f.filePath);
+  const source = sources.find((s) => path.resolve(s.path) === path.resolve(dir));
+  const fileName = path.basename(f.filePath);
+  const meta = parseFileName(fileName);
+  return {
+    fileName,
+    sourceName: source ? source.name : null,
+    service: meta?.service ?? null,
+    date: meta?.date ?? null,
+    entryCount: f.entryCount,
+    sizeBytes: f.sizeBytes,
+  };
+}
+
+app.get("/api/diagnostics", (req, res) => {
+  let pdfJobsDiskUsageBytes = 0;
+  try {
+    for (const file of fs.readdirSync(PDF_JOB_DIR)) {
+      pdfJobsDiskUsageBytes += fs.statSync(path.join(PDF_JOB_DIR, file)).size;
+    }
+  } catch {
+    // dir momentarily missing/being written to — not worth failing the request over
+  }
+
+  const cacheStats = getCacheStats();
+
+  res.json({
+    memory: memoryStats(),
+    heapSpaces: heapSpaceStats(),
+    configuredMaxHeapMB: maxHeapMB,
+    heapWarningPct,
+    uptimeSeconds: Math.round(process.uptime()),
+    pdfJobsCount: pdfJobs.length,
+    pdfJobsRunning: pdfJobs.filter((j) => j.status === "running").length,
+    pdfJobsDiskUsageMB: toMB(pdfJobsDiskUsageBytes),
+    gcAvailable: typeof global.gc === "function",
+    emergencyMode,
+    emergencyReason,
+    emergencyTriggeredAt,
+    cache: {
+      cachedFiles: cacheStats.cachedFiles,
+      cachedEntries: cacheStats.cachedEntries,
+      maxCachedEntries: cacheStats.maxCachedEntries,
+      topFiles: cacheStats.topFiles.map(enrichCacheFile),
+    },
+  });
+});
+
+app.post("/api/diagnostics/gc", (req, res) => {
+  if (typeof global.gc !== "function") {
+    return res
+      .status(400)
+      .json({ error: "Garbage Collection ist nicht verfügbar (Server ohne --expose-gc gestartet)." });
+  }
+  global.gc();
+  res.json({ memory: memoryStats() });
+});
+
+// Cheap, frequently-pollable status check (no cache/disk stats, unlike
+// /api/diagnostics) — used by the home page and Reload-Übersicht to show
+// the heap warning banner and gate jobs/reloads during emergency mode.
+app.get("/api/health", (req, res) => {
+  const heapPct = currentHeapPct();
+  res.json({
+    heapPct: Math.round(heapPct),
+    heapWarning: heapPct >= heapWarningPct,
+    heapWarningPct,
+    emergencyMode,
+    emergencyReason,
+    emergencyTriggeredAt,
+  });
+});
+
+// Manual escape hatch for emergency mode (see the Startseite banner) — the
+// automatic trigger only ever turns it *on*, so a person has to confirm
+// they've actually done something about it (freed memory, restarted with a
+// bigger heap) before jobs/reloads resume. Refuses to clear while the heap
+// is still genuinely critical, so it can't be used to just wish the problem
+// away.
+app.post("/api/health/clear-emergency", (req, res) => {
+  const heapPct = currentHeapPct();
+  if (heapPct >= HEAP_EMERGENCY_PCT) {
+    return res.status(400).json({
+      error: `Speicherverbrauch ist weiterhin kritisch (${Math.round(heapPct)}%). Erst Cache leeren/Garbage Collection ausführen oder neu starten, dann erneut versuchen.`,
+    });
+  }
+  emergencyMode = false;
+  emergencyReason = null;
+  emergencyTriggeredAt = null;
+  res.json({
+    heapPct: Math.round(heapPct),
+    heapWarning: heapPct >= heapWarningPct,
+    heapWarningPct,
+    emergencyMode,
+    emergencyReason,
+    emergencyTriggeredAt,
+  });
+});
+
+// Empties parser.js's parsed-file cache entirely — the biggest single
+// contributor to heap growth over a long-running session (see parser.js).
+// The next read of any file just re-parses it from disk, so this is always
+// safe, just momentarily slower for whatever gets requested next.
+app.post("/api/diagnostics/clear-cache", (req, res) => {
+  clearCache();
+  res.json({ memory: memoryStats(), cache: getCacheStats() });
 });
 
 app.get("/api/stats", (req, res) => {
@@ -1512,7 +1780,9 @@ app.get("/api/summary", (req, res) => {
 // healthy source with no errors still shows up (green indicator), not just
 // the ones that had errors in the window.
 app.get("/api/error-counts", (req, res) => {
-  const hours = Math.max(1, parseInt(req.query.hours, 10) || 24);
+  // Capped at a year — an unbounded window here means scanning every file
+  // of every source, which the home page could otherwise re-trigger often.
+  const hours = Math.min(8760, Math.max(1, parseInt(req.query.hours, 10) || 24));
   const sinceMs = Date.now() - hours * 60 * 60 * 1000;
   const sinceIso = new Date(sinceMs).toISOString();
   const sinceDate = sinceIso.slice(0, 10);

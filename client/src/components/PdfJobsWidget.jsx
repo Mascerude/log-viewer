@@ -22,7 +22,8 @@ function statusLabel(job) {
   }
 }
 
-function PdfJobRow({ job, onStop, onDelete, onDownload }) {
+// Exported for reuse by ServerDiagnosticsPage.jsx's PDF-Jobs list.
+export function PdfJobRow({ job, onStop, onDelete, onDownload }) {
   const isRunning = job.status === "running" || job.status === "stopping";
   return (
     <li className={`pdf-job-row pdf-job-row-${job.status}`}>

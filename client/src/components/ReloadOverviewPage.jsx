@@ -8,7 +8,7 @@ function effectiveIntervalSeconds(source, globalRefreshIntervalSeconds) {
   return source.refreshIntervalSeconds ?? globalRefreshIntervalSeconds;
 }
 
-function ReloadRow({ source, fileCount, globalRefreshIntervalSeconds, now, state, onReloadNow }) {
+function ReloadRow({ source, fileCount, globalRefreshIntervalSeconds, now, state, onReloadNow, emergencyMode }) {
   const intervalSeconds = effectiveIntervalSeconds(source, globalRefreshIntervalSeconds);
   const intervalMs = intervalSeconds * 1000;
   const elapsedMs = Math.max(0, now - state.lastReloadAt);
@@ -52,12 +52,21 @@ function ReloadRow({ source, fileCount, globalRefreshIntervalSeconds, now, state
           />
         </div>
         <span className="reload-countdown">
-          {state.reloading ? "wird geladen..." : `nächster Reload in ${remainingSeconds}s`}
+          {state.reloading
+            ? "wird geladen..."
+            : emergencyMode
+              ? "pausiert (Notfallmodus)"
+              : `nächster Reload in ${remainingSeconds}s`}
         </span>
       </div>
 
       <div className="source-row-actions">
-        <button type="button" onClick={() => onReloadNow(source.id)} disabled={state.reloading}>
+        <button
+          type="button"
+          onClick={() => onReloadNow(source.id)}
+          disabled={state.reloading || emergencyMode}
+          title={emergencyMode ? "Im Notfallmodus deaktiviert — siehe Hinweis auf der Startseite" : undefined}
+        >
           <RefreshIcon className={state.reloading ? "icon-spin" : undefined} /> Jetzt neu laden
         </button>
       </div>
@@ -71,7 +80,13 @@ function ReloadRow({ source, fileCount, globalRefreshIntervalSeconds, now, state
 // elapses its file list is actually re-fetched (not just a visual
 // countdown), and the result is reported up via onSourceReloaded so the rest
 // of the app (sidebar file counts, etc.) sees the same fresh data.
-export default function ReloadOverviewPage({ sources, fileCounts, refreshIntervalSeconds, onSourceReloaded }) {
+export default function ReloadOverviewPage({
+  sources,
+  fileCounts,
+  refreshIntervalSeconds,
+  onSourceReloaded,
+  emergencyMode,
+}) {
   const [now, setNow] = useState(() => Date.now());
   const [reloadState, setReloadState] = useState({});
   const inFlightRef = useRef(new Set());
@@ -139,21 +154,32 @@ export default function ReloadOverviewPage({ sources, fileCounts, refreshInterva
   }
 
   // Checked once per second (see the `now` ticker above) — any source whose
-  // cycle has elapsed and isn't already reloading gets kicked off.
+  // cycle has elapsed and isn't already reloading gets kicked off. Paused
+  // entirely during emergency mode (see server/index.js) — automatic
+  // reloads keep growing memory, which is exactly what that mode exists to
+  // stop; already-in-flight reloads are left to finish normally.
   useEffect(() => {
+    if (emergencyMode) return;
     for (const s of sources) {
       const state = reloadState[s.id];
       if (!state || state.reloading) continue;
       const intervalMs = effectiveIntervalSeconds(s, refreshIntervalSeconds) * 1000;
       if (now - state.lastReloadAt >= intervalMs) reload(s.id);
     }
-    // Only `now` should drive this check — reload()/reloadState/sources are
-    // read fresh from the closure each time it fires.
+    // Only `now`/emergencyMode should drive this check — reload()/reloadState/
+    // sources are read fresh from the closure each time it fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now]);
+  }, [now, emergencyMode]);
 
   return (
     <div className="home-page">
+      {emergencyMode && (
+        <div className="table-error">
+          Notfallmodus aktiv: automatische Reloads sind pausiert und "Jetzt neu laden" ist deaktiviert, bis der
+          Speicherverbrauch wieder normal ist — Details und Anleitung auf der Startseite.
+        </div>
+      )}
+
       <div className="chart-card">
         <div className="chart-header">
           <div>
@@ -175,6 +201,7 @@ export default function ReloadOverviewPage({ sources, fileCounts, refreshInterva
               now={now}
               state={reloadState[s.id] || { lastReloadAt: now, reloading: false }}
               onReloadNow={reload}
+              emergencyMode={emergencyMode}
             />
           ))}
         </div>
