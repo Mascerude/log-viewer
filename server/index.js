@@ -10,8 +10,13 @@ import dotenv from "dotenv";
 import PDFDocument from "pdfkit";
 import v8 from "v8";
 import { listLogFiles, parseLogFile, parseFileName, getCacheStats, clearCache } from "./parser.js";
+import { installFileLogging, listToolLogFiles } from "./logger.js";
 
 dotenv.config();
+// Captures console.error (this file, parser.js, ...) into a monthly-rotated
+// file under logs/ — see server/logger.js and /api/tool-logs below.
+// Installed before any route is registered so nothing is missed.
+installFileLogging();
 
 const app = express();
 app.use(cors());
@@ -1115,6 +1120,40 @@ app.get("/api/logs", (req, res) => {
     return true;
   });
   let entries = filterEntriesByDate(loadEntries(files), from, to, fromTime, toTime);
+  entries = applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeMode });
+  entries = sortEntries(entries, sortBy, sortDir);
+
+  const total = entries.length;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const size = Math.min(1000, Math.max(1, parseInt(pageSize, 10) || 200));
+  const start = (pageNum - 1) * size;
+  const pageEntries = entries.slice(start, start + size);
+
+  res.json({ entries: pageEntries, total, page: pageNum, pageSize: size });
+});
+
+// The tool's own operational log (see server/logger.js) — same filter/sort/
+// paginate shape as /api/logs above, minus the source/service scoping since
+// there's only ever this one "virtual source".
+app.get("/api/tool-logs", (req, res) => {
+  const {
+    from,
+    to,
+    fromTime,
+    toTime,
+    level,
+    search,
+    exclude,
+    excludeMode,
+    pid,
+    tid,
+    sortBy = "timestamp",
+    sortDir = "desc",
+    page = "1",
+    pageSize = "200",
+  } = req.query;
+
+  let entries = filterEntriesByDate(loadEntries(listToolLogFiles()), from, to, fromTime, toTime);
   entries = applyEntryFilters(entries, { level, pid, tid, search, exclude, excludeMode });
   entries = sortEntries(entries, sortBy, sortDir);
 

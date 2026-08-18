@@ -171,6 +171,40 @@ export function getLogs({
   });
 }
 
+export function getToolLogs({
+  from,
+  to,
+  fromTime,
+  toTime,
+  level,
+  search,
+  exclude,
+  excludeMode,
+  pid,
+  tid,
+  sortBy,
+  sortDir,
+  page,
+  pageSize,
+} = {}) {
+  return get("/tool-logs", {
+    from,
+    to,
+    fromTime,
+    toTime,
+    level,
+    search,
+    exclude,
+    excludeMode,
+    pid,
+    tid,
+    sortBy,
+    sortDir,
+    page,
+    pageSize,
+  });
+}
+
 export function getSummary() {
   return get("/summary");
 }

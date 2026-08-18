@@ -86,6 +86,16 @@ export function FolderIcon(props) {
   );
 }
 
+export function FileTextIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M7 3.5h7l4 4V19a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+      <path d="M14 3.5V7a1 1 0 0 0 1 1h3.5" />
+      <path d="M9 12.5h6M9 15.5h6M9 9.5h2" />
+    </svg>
+  );
+}
+
 export function AlertIcon(props) {
   return (
     <svg {...base} {...props}>

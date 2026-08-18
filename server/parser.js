@@ -159,11 +159,31 @@ export function parseLogFile(filePath, fileName) {
 }
 
 export function listLogFiles(dir) {
-  const names = fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".log"));
+  let names;
+  try {
+    names = fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".log"));
+  } catch (err) {
+    // Directory briefly unreachable (network share hiccup) — treat as empty
+    // rather than failing every source's listing along with it.
+    console.error(`Failed to list ${dir}:`, err.message);
+    return [];
+  }
   const files = [];
   for (const name of names) {
+    let stat;
+    try {
+      stat = fs.statSync(path.join(dir, name));
+    } catch (err) {
+      // The file this readdirSync saw a moment ago can already be gone by
+      // the time we stat it — expected on a live share where an external
+      // process is actively rotating/writing these logs, not a bug. Skip
+      // just this one file instead of failing the whole directory's listing
+      // (which previously took down every endpoint that lists across
+      // sources, e.g. /api/files, /api/logs, /api/summary).
+      console.error(`Skipping ${name} in ${dir}:`, err.message);
+      continue;
+    }
     const meta = parseFileName(name);
-    const stat = fs.statSync(path.join(dir, name));
     files.push({
       fileName: name,
       service: meta?.service ?? null,

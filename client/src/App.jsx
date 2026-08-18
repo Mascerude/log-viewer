@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSources, getGroups, getServers, getFiles, getSettings, getSummary, getHealth, clearEmergencyMode } from "./api";
 import { errorSeverity } from "./errorSeverity";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
-import SearchPage from "./components/SearchPage";
-import ServiceView from "./components/ServiceView";
-import SettingsPage from "./components/SettingsPage";
-import ReloadOverviewPage from "./components/ReloadOverviewPage";
-import ServerDiagnosticsPage from "./components/ServerDiagnosticsPage";
 import PdfJobsWidget from "./components/PdfJobsWidget";
 import { SettingsProvider } from "./settingsContext";
 import { PdfJobsProvider } from "./pdfJobsContext";
 import "./App.css";
+
+// Code-split: only the home page (the default, always-visible view) and the
+// sidebar/PDF widget chrome ship in the initial bundle — everything else is
+// fetched on first visit to that view, keeping the main JS chunk smaller.
+const SearchPage = lazy(() => import("./components/SearchPage"));
+const ServiceView = lazy(() => import("./components/ServiceView"));
+const SettingsPage = lazy(() => import("./components/SettingsPage"));
+const ReloadOverviewPage = lazy(() => import("./components/ReloadOverviewPage"));
+const ServerDiagnosticsPage = lazy(() => import("./components/ServerDiagnosticsPage"));
+const ToolLogsPage = lazy(() => import("./components/ToolLogsPage"));
 
 // A saved search's share link is "?savedSearch=<id>" — consumed once on
 // load by SearchPage, which fetches and applies that record.
@@ -282,6 +287,9 @@ export default function App() {
   function goDiagnostics() {
     setView({ name: "diagnostics" });
   }
+  function goToolLogs() {
+    setView({ name: "toolLogs" });
+  }
   function goService(sourceId, service, sourceName) {
     setView({ name: "service", sourceId, service, sourceName });
   }
@@ -300,6 +308,7 @@ export default function App() {
             onSelectSearch={goSearch}
             onSelectReloads={goReloads}
             onSelectDiagnostics={goDiagnostics}
+            onSelectToolLogs={goToolLogs}
             onSelectSettings={goSettings}
             sourceSeverity={sourceSeverity}
             serviceSeverity={serviceSeverity}
@@ -307,75 +316,79 @@ export default function App() {
           />
           <div className="main-content">
             <div className="app">
-              {view.name === "home" && (
-                <HomePage
-                  summary={summary}
-                  loading={summaryLoading}
-                  error={summaryError}
-                  updatedAt={summaryUpdatedAt}
-                  onRefresh={refreshSummary}
-                  onSelectService={goService}
-                  errorWarningThreshold={errorWarningThreshold}
-                  errorCriticalThreshold={errorCriticalThreshold}
-                  health={health}
-                  onClearEmergency={handleClearEmergency}
-                  onSelectDiagnostics={goDiagnostics}
-                />
-              )}
+              <Suspense fallback={<div className="chart-subtitle">Lädt...</div>}>
+                {view.name === "home" && (
+                  <HomePage
+                    summary={summary}
+                    loading={summaryLoading}
+                    error={summaryError}
+                    updatedAt={summaryUpdatedAt}
+                    onRefresh={refreshSummary}
+                    onSelectService={goService}
+                    errorWarningThreshold={errorWarningThreshold}
+                    errorCriticalThreshold={errorCriticalThreshold}
+                    health={health}
+                    onClearEmergency={handleClearEmergency}
+                    onSelectDiagnostics={goDiagnostics}
+                  />
+                )}
 
-              {view.name === "search" && (
-                <SearchPage
-                  sources={sources}
-                  files={files}
-                  initialSavedSearchId={initialDataLoaded ? initialSavedSearchId : null}
-                />
-              )}
+                {view.name === "search" && (
+                  <SearchPage
+                    sources={sources}
+                    files={files}
+                    initialSavedSearchId={initialDataLoaded ? initialSavedSearchId : null}
+                  />
+                )}
 
-              {view.name === "service" && (
-                <ServiceView
-                  key={`${view.sourceId}:${view.service}`}
-                  sourceId={view.sourceId}
-                  service={view.service}
-                  sourceName={view.sourceName}
-                  source={sources.find((s) => s.id === view.sourceId)}
-                  files={files}
-                  refreshIntervalSeconds={refreshIntervalSeconds}
-                />
-              )}
+                {view.name === "service" && (
+                  <ServiceView
+                    key={`${view.sourceId}:${view.service}`}
+                    sourceId={view.sourceId}
+                    service={view.service}
+                    sourceName={view.sourceName}
+                    source={sources.find((s) => s.id === view.sourceId)}
+                    files={files}
+                    refreshIntervalSeconds={refreshIntervalSeconds}
+                  />
+                )}
 
-              {view.name === "reloads" && (
-                <ReloadOverviewPage
-                  sources={sources}
-                  fileCounts={fileCounts}
-                  refreshIntervalSeconds={refreshIntervalSeconds}
-                  onSourceReloaded={handleSourceFilesReloaded}
-                  emergencyMode={health.emergencyMode}
-                />
-              )}
+                {view.name === "reloads" && (
+                  <ReloadOverviewPage
+                    sources={sources}
+                    fileCounts={fileCounts}
+                    refreshIntervalSeconds={refreshIntervalSeconds}
+                    onSourceReloaded={handleSourceFilesReloaded}
+                    emergencyMode={health.emergencyMode}
+                  />
+                )}
 
-              {view.name === "diagnostics" && <ServerDiagnosticsPage />}
+                {view.name === "diagnostics" && <ServerDiagnosticsPage />}
 
-              {view.name === "settings" && (
-                <SettingsPage
-                  sources={sources}
-                  groups={groups}
-                  fileCounts={fileCounts}
-                  servicesBySource={servicesBySource}
-                  servers={servers}
-                  refreshIntervalSeconds={refreshIntervalSeconds}
-                  goToPageDelaySeconds={goToPageDelaySeconds}
-                  errorWarningThreshold={errorWarningThreshold}
-                  errorCriticalThreshold={errorCriticalThreshold}
-                  onChanged={handleSourcesChanged}
-                  onServersChanged={handleServersChanged}
-                  onRefreshIntervalChanged={setRefreshIntervalSeconds}
-                  onGoToPageDelayChanged={setGoToPageDelaySeconds}
-                  onErrorThresholdsChanged={handleErrorThresholdsChanged}
-                  colorizeSidebar={colorizeSidebar}
-                  onColorizeSidebarChanged={setColorizeSidebar}
-                  onBack={goHome}
-                />
-              )}
+                {view.name === "toolLogs" && <ToolLogsPage />}
+
+                {view.name === "settings" && (
+                  <SettingsPage
+                    sources={sources}
+                    groups={groups}
+                    fileCounts={fileCounts}
+                    servicesBySource={servicesBySource}
+                    servers={servers}
+                    refreshIntervalSeconds={refreshIntervalSeconds}
+                    goToPageDelaySeconds={goToPageDelaySeconds}
+                    errorWarningThreshold={errorWarningThreshold}
+                    errorCriticalThreshold={errorCriticalThreshold}
+                    onChanged={handleSourcesChanged}
+                    onServersChanged={handleServersChanged}
+                    onRefreshIntervalChanged={setRefreshIntervalSeconds}
+                    onGoToPageDelayChanged={setGoToPageDelaySeconds}
+                    onErrorThresholdsChanged={handleErrorThresholdsChanged}
+                    colorizeSidebar={colorizeSidebar}
+                    onColorizeSidebarChanged={setColorizeSidebar}
+                    onBack={goHome}
+                  />
+                )}
+              </Suspense>
             </div>
           </div>
           <PdfJobsWidget />

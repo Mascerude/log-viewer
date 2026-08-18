@@ -106,6 +106,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-search,
 .sidebar-reloads,
 .sidebar-diagnostics,
+.sidebar-tool-logs,
 .sidebar-settings {
   display: flex;
   align-items: center;
@@ -132,6 +133,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-search.active,
 .sidebar-reloads.active,
 .sidebar-diagnostics.active,
+.sidebar-tool-logs.active,
 .sidebar-settings.active,
 .sidebar-service.active {
   background: var(--accent-bg);
@@ -143,6 +145,7 @@ body.sidebar-resizing .sidebar-resize-handle {
 .sidebar-search:hover,
 .sidebar-reloads:hover,
 .sidebar-diagnostics:hover,
+.sidebar-tool-logs:hover,
 .sidebar-settings:hover,
 .sidebar-service:hover {
   background: var(--code-bg);

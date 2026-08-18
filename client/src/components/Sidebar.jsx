@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, SettingsIcon, SearchIcon, RefreshIcon, AlertIcon, ChevronRightIcon, FolderIcon } from "./icons";
+import { HomeIcon, SettingsIcon, SearchIcon, RefreshIcon, AlertIcon, ChevronRightIcon, FolderIcon, FileTextIcon } from "./icons";
 
 function formatExpiry(iso) {
   const [, m, d] = iso.split("-");
@@ -228,6 +228,7 @@ export default function Sidebar({
   onSelectSearch,
   onSelectReloads,
   onSelectDiagnostics,
+  onSelectToolLogs,
   onSelectSettings,
   sourceSeverity = {},
   serviceSeverity = {},
@@ -460,6 +461,14 @@ export default function Sidebar({
         onClick={onSelectDiagnostics}
       >
         <AlertIcon className="sidebar-icon" /> Server-Diagnose
+      </button>
+
+      <button
+        type="button"
+        className={`sidebar-tool-logs${view.name === "toolLogs" ? " active" : ""}`}
+        onClick={onSelectToolLogs}
+      >
+        <FileTextIcon className="sidebar-icon" /> Tool-Logs
       </button>
 
       <button
