@@ -1,9 +1,17 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSources, getGroups, getServers, getFiles, getSettings, getSummary, getHealth, clearEmergencyMode } from "./api";
+import { getSources, getGroups, getServers, getFiles, getSettings, getSummary, getHealth, clearEmergencyMode, resolveShare } from "./api";
 import { errorSeverity } from "./errorSeverity";
+import { getInitialShareId } from "./shareLink";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
 import PdfJobsWidget from "./components/PdfJobsWidget";
+// Statically imported (not lazy like the page views below) — both are
+// already pulled into the lazy page chunks by LogTable.jsx/
+// MessageOccurrences.jsx, so a separate dynamic import here wouldn't create
+// a real additional split, just build-warning noise (Rolldown's
+// INEFFECTIVE_DYNAMIC_IMPORT).
+import LogEntryModal from "./components/LogEntryModal";
+import CompareEntriesModal from "./components/CompareEntriesModal";
 import { SettingsProvider } from "./settingsContext";
 import { PdfJobsProvider } from "./pdfJobsContext";
 import "./App.css";
@@ -17,6 +25,7 @@ const SettingsPage = lazy(() => import("./components/SettingsPage"));
 const ReloadOverviewPage = lazy(() => import("./components/ReloadOverviewPage"));
 const ServerDiagnosticsPage = lazy(() => import("./components/ServerDiagnosticsPage"));
 const ToolLogsPage = lazy(() => import("./components/ToolLogsPage"));
+const ShareMissingModal = lazy(() => import("./components/ShareMissingModal"));
 
 // A saved search's share link is "?savedSearch=<id>" — consumed once on
 // load by SearchPage, which fetches and applies that record.
@@ -50,6 +59,13 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
   const [summaryUpdatedAt, setSummaryUpdatedAt] = useState(null);
+
+  // Opened from a "?share=<id>" link (see shareLink.js and the "Teilen"
+  // buttons on LogEntryModal/CompareEntriesModal) — overlays on top of
+  // whatever view is current rather than switching to a dedicated page.
+  const [sharedEntry, setSharedEntry] = useState(null);
+  const [sharedCompareEntries, setSharedCompareEntries] = useState(null);
+  const [shareWarning, setShareWarning] = useState(null);
 
   // Polled independent of refreshIntervalSeconds/view — the heap-warning
   // banner and the emergency-mode gate (see HomePage/ReloadOverviewPage)
@@ -121,6 +137,59 @@ export default function App() {
       })
       .catch(() => {});
   }, [refreshSources, refreshGroups, refreshServers, refreshFiles]);
+
+  // Consumes "?share=<id>" once on load (same pattern as "?savedSearch=" for
+  // SearchPage above) — resolves it server-side (see /api/shares/:id/resolve
+  // in server/index.js) and opens the right overlay: straight to
+  // LogEntryModal/CompareEntriesModal if everything the link points at still
+  // exists, otherwise ShareMissingModal explains what's gone and, for a
+  // partially-missing comparison, offers to show what's left.
+  useEffect(() => {
+    const id = getInitialShareId();
+    if (!id) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("share");
+    window.history.replaceState({}, "", url);
+
+    resolveShare(id)
+      .then(({ kind, results }) => {
+        const found = results.filter((r) => r.found).map((r) => r.entry);
+        const missing = results.filter((r) => !r.found).map((r) => r.ref);
+
+        if (kind === "entry") {
+          if (found.length === 1) {
+            setSharedEntry(found[0]);
+          } else {
+            setShareWarning({
+              message:
+                "Dieser geteilte Log-Eintrag existiert nicht mehr — die Quelldatei wurde vermutlich rotiert oder gelöscht.",
+              missingRefs: missing,
+            });
+          }
+          return;
+        }
+
+        // kind === "compare"
+        if (missing.length === 0) {
+          setSharedCompareEntries(found);
+        } else if (found.length > 0) {
+          setShareWarning({
+            message: `${missing.length} von ${results.length} Einträgen dieses geteilten Vergleichs existieren nicht mehr.`,
+            missingRefs: missing,
+            onShowFound: () => {
+              setShareWarning(null);
+              setSharedCompareEntries(found);
+            },
+          });
+        } else {
+          setShareWarning({
+            message: "Keiner der Log-Einträge dieses geteilten Vergleichs existiert noch.",
+            missingRefs: missing,
+          });
+        }
+      })
+      .catch((err) => setShareWarning({ message: err.message || "Dieser Teilen-Link ist ungültig oder wurde gelöscht." }));
+  }, []);
 
   function handleSourcesChanged() {
     refreshSources();
@@ -392,6 +461,14 @@ export default function App() {
             </div>
           </div>
           <PdfJobsWidget />
+
+          <Suspense fallback={null}>
+            {sharedEntry && <LogEntryModal entry={sharedEntry} onClose={() => setSharedEntry(null)} />}
+            {sharedCompareEntries && (
+              <CompareEntriesModal entries={sharedCompareEntries} onClose={() => setSharedCompareEntries(null)} />
+            )}
+            {shareWarning && <ShareMissingModal {...shareWarning} onClose={() => setShareWarning(null)} />}
+          </Suspense>
         </div>
       </PdfJobsProvider>
     </SettingsProvider>

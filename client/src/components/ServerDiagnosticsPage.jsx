@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { getDiagnostics, forceGc, clearParseCache, updateSettings } from "../api";
+import { getDiagnostics, forceGc, clearParseCache, updateSettings, getShares, deleteShare } from "../api";
 import { usePdfJobs } from "../pdfJobsContext";
 import { PdfJobRow } from "./PdfJobsWidget";
-import { RefreshIcon } from "./icons";
+import { RefreshIcon, LinkIcon, CheckIcon } from "./icons";
+import { buildShareLink } from "../shareLink";
+import { copyPlainText } from "../clipboard";
 
 const POLL_MS = 4000;
 
@@ -19,6 +21,48 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ShareRow({ share, onDelete }) {
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleCopy() {
+    await copyPlainText(buildShareLink(share.id));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await onDelete(share.id);
+    } catch {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td>{share.kind === "compare" ? `Vergleich (${share.entries.length})` : "Eintrag"}</td>
+      <td>
+        {share.entries.map((e, i) => (
+          <div key={i} className="share-row-entry">
+            {e.sourceName} · {e.service} · <code>{e.fileName}</code>
+          </div>
+        ))}
+      </td>
+      <td>{new Date(share.createdAt).toLocaleString("de-DE")}</td>
+      <td className="share-row-actions">
+        <button type="button" className="settings-button" onClick={handleCopy}>
+          {copied ? <CheckIcon /> : <LinkIcon />} {copied ? "Kopiert!" : "Link kopieren"}
+        </button>
+        <button type="button" className="settings-button danger" onClick={handleDelete} disabled={deleting}>
+          {deleting ? "Löscht..." : "Löschen"}
+        </button>
+      </td>
+    </tr>
+  );
 }
 
 // Live view of the server process's memory (process.memoryUsage(), see
@@ -39,6 +83,7 @@ export default function ServerDiagnosticsPage() {
   const [warningPctDraft, setWarningPctDraft] = useState(null);
   const [savingWarningPct, setSavingWarningPct] = useState(false);
   const [warningPctResult, setWarningPctResult] = useState(null);
+  const [shares, setShares] = useState([]);
 
   const load = useCallback(() => {
     getDiagnostics()
@@ -52,12 +97,27 @@ export default function ServerDiagnosticsPage() {
       .catch((err) => setError(err.message));
   }, []);
 
+  const loadShares = useCallback(() => {
+    getShares()
+      .then(setShares)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
+    loadShares();
     refreshJobs();
-    const id = setInterval(load, POLL_MS);
+    const id = setInterval(() => {
+      load();
+      loadShares();
+    }, POLL_MS);
     return () => clearInterval(id);
-  }, [load, refreshJobs]);
+  }, [load, loadShares, refreshJobs]);
+
+  async function handleDeleteShare(id) {
+    await deleteShare(id);
+    setShares((prev) => prev.filter((s) => s.id !== id));
+  }
 
   async function handleSaveMaxHeap(e) {
     e.preventDefault();
@@ -406,6 +466,40 @@ export default function ServerDiagnosticsPage() {
               <PdfJobRow key={job.id} job={job} onStop={stopJob} onDelete={deleteJob} onDownload={downloadJob} />
             ))}
           </ul>
+        )}
+      </div>
+
+      <div className="chart-card">
+        <div className="chart-header">
+          <div>
+            <h2>Geteilte Log-Einträge</h2>
+            <p className="chart-subtitle">
+              Über "Teilen" an einem Log-Eintrag oder Vergleich erzeugte Links — hier einsehbar und löschbar.
+              Ein gelöschter Link funktioniert danach nicht mehr.
+            </p>
+          </div>
+        </div>
+
+        {shares.length === 0 ? (
+          <p className="chart-subtitle">Keine geteilten Links.</p>
+        ) : (
+          <div className="table-scroll">
+            <table className="log-table">
+              <thead>
+                <tr>
+                  <th>Art</th>
+                  <th>Inhalt</th>
+                  <th>Erstellt</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shares.map((s) => (
+                  <ShareRow key={s.id} share={s} onDelete={handleDeleteShare} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

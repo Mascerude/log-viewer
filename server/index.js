@@ -26,6 +26,8 @@ app.use(express.json({ limit: "50mb" }));
 const PORT = process.env.PORT || 4000;
 const CONFIG_PATH = path.resolve("config.json");
 const SAVED_SEARCHES_PATH = path.resolve("saved-searches.json");
+const SHARES_PATH = path.resolve("shares.json");
+const MAX_SHARE_ENTRIES = 5; // matches the client's own compare-selection cap (useCompareSelection.js)
 const DEFAULT_REFRESH_SECONDS = 30;
 const DEFAULT_GOTO_PAGE_DELAY_SECONDS = 1.5;
 const MONITOR_INTERVAL_MS = 30_000;
@@ -164,6 +166,20 @@ function saveSavedSearchesFile() {
   );
 }
 
+function loadSharesFile() {
+  try {
+    const raw = fs.readFileSync(SHARES_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return []; // no shares.json yet, or unreadable
+  }
+}
+
+function saveSharesFile() {
+  fs.writeFileSync(SHARES_PATH, JSON.stringify(shares, null, 2), "utf-8");
+}
+
 const loaded = loadConfig();
 let sources =
   loaded.sources || [
@@ -193,6 +209,12 @@ if (!loadedSavedSearches && Array.isArray(loaded.legacySavedSearches) && loaded.
   savedSearches = loaded.legacySavedSearches.map((s) => ({ ...s, folderId: s.folderId || null }));
   saveSavedSearchesFile();
 }
+
+// Shared log-entry/comparison links (see /api/shares below and the
+// "Teilen" buttons on LogEntryModal/CompareEntriesModal) — deliberately its
+// own file rather than saved-searches.json, a separate concern likely to
+// grow independently.
+let shares = loadSharesFile();
 
 pruneExpired();
 saveConfig();
@@ -1052,6 +1074,86 @@ app.delete("/api/saved-searches/:id", (req, res) => {
   if (idx === -1) return res.status(404).json({ error: "Gespeicherte Suche nicht gefunden." });
   savedSearches.splice(idx, 1);
   saveSavedSearchesFile();
+  res.status(204).end();
+});
+
+// ---- Shared log entries / comparisons ----
+//
+// A share stores just enough to re-locate the original entry later — never
+// a snapshot of its content — so opening the link always reflects live data
+// and, just as importantly, can detect the file having been rotated away or
+// deleted since (see resolveSharedEntryRef below and the "found" flag it
+// returns, which the client turns into the "no longer exists" warning).
+
+function shareEntryRef(e) {
+  return { id: e.id, sourceId: e.sourceId, sourceName: e.sourceName, service: e.service, fileName: e.fileName };
+}
+
+// Re-parses the referenced file fresh (files aren't kept around by id — log
+// entries are only ever derived on demand) and looks for an entry whose id
+// still matches. A changed/rotated file legitimately won't have it anymore;
+// that's reported as `found: false`, not an error.
+function resolveSharedEntryRef(ref) {
+  const files = listAllFiles(ref.sourceId).filter((f) => f.fileName === ref.fileName);
+  for (const f of files) {
+    try {
+      for (const e of parseLogFile(f.fullPath, f.fileName)) {
+        const id = `${f.sourceId}:${e.id}`;
+        if (id === ref.id) {
+          return { ref, found: true, entry: { ...e, id, service: f.service, sourceId: f.sourceId, sourceName: f.sourceName } };
+        }
+      }
+    } catch {
+      // Unreadable right now (e.g. mid-rotation on a network share) — falls
+      // through to "not found" below rather than failing the whole request.
+    }
+  }
+  return { ref, found: false };
+}
+
+app.get("/api/shares", (req, res) => {
+  res.json(shares);
+});
+
+app.post("/api/shares", (req, res) => {
+  const { kind, entries } = req.body || {};
+  if (kind !== "entry" && kind !== "compare") {
+    return res.status(400).json({ error: "kind muss 'entry' oder 'compare' sein." });
+  }
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return res.status(400).json({ error: "Mindestens ein Log-Eintrag ist erforderlich." });
+  }
+  if (kind === "entry" && entries.length !== 1) {
+    return res.status(400).json({ error: "Ein einzelner Log-Eintrag-Link braucht genau einen Eintrag." });
+  }
+  if (kind === "compare" && (entries.length < 2 || entries.length > MAX_SHARE_ENTRIES)) {
+    return res.status(400).json({ error: `Ein Vergleichs-Link braucht 2 bis ${MAX_SHARE_ENTRIES} Einträge.` });
+  }
+  if (entries.some((e) => !e || !e.id || !e.sourceId || !e.fileName)) {
+    return res.status(400).json({ error: "Ungültige Eintrag-Referenz." });
+  }
+  const share = {
+    id: crypto.randomUUID(),
+    kind,
+    entries: entries.map(shareEntryRef),
+    createdAt: new Date().toISOString(),
+  };
+  shares.push(share);
+  saveSharesFile();
+  res.status(201).json(share);
+});
+
+app.get("/api/shares/:id/resolve", (req, res) => {
+  const share = shares.find((s) => s.id === req.params.id);
+  if (!share) return res.status(404).json({ error: "Dieser Teilen-Link ist ungültig oder wurde gelöscht." });
+  res.json({ kind: share.kind, results: share.entries.map(resolveSharedEntryRef) });
+});
+
+app.delete("/api/shares/:id", (req, res) => {
+  const idx = shares.findIndex((s) => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Geteilter Link nicht gefunden." });
+  shares.splice(idx, 1);
+  saveSharesFile();
   res.status(204).end();
 });
 

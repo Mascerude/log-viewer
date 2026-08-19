@@ -939,6 +939,44 @@ body.sidebar-resizing .sidebar-resize-handle {
   font-size: 14px;
 }
 
+.share-missing-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.share-missing-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.share-missing-list li {
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--code-bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.share-row-entry {
+  font-size: 13px;
+}
+
+.share-row-entry + .share-row-entry {
+  margin-top: 4px;
+}
+
+.share-row-actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .occurrence-table-header {
   display: flex;
   align-items: flex-start;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CloseIcon } from "./icons";
 import EntryFields from "./EntryFields";
 import ToggleSwitch from "./ToggleSwitch";
+import ShareButton from "./ShareButton";
 import { computeMessageDiffs } from "../textDiff";
 
 const DIFF_KEYS = ["timestamp", "levelName", "sourceName", "service", "pid", "tid", "file", "message"];
@@ -80,6 +81,7 @@ export default function CompareEntriesModal({ entries, onClose }) {
           <button type="button" className="secondary" onClick={onClose}>
             Schließen
           </button>
+          {entries.length >= 2 && <ShareButton kind="compare" entries={entries} label="Vergleich teilen" />}
         </div>
       </div>
     </div>

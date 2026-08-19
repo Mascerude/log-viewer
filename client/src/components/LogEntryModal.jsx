@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CloseIcon, CopyIcon, CheckIcon, SearchIcon, ChevronDownIcon } from "./icons";
 import MessageOccurrences from "./MessageOccurrences";
 import EntryFields from "./EntryFields";
+import ShareButton from "./ShareButton";
 import { copyPlainText, copyRichText } from "../clipboard";
 
 function formatTimestamp(iso) {
@@ -149,6 +150,7 @@ export default function LogEntryModal({ entry, onClose }) {
           <button type="button" className="secondary" onClick={onClose}>
             Schließen
           </button>
+          <ShareButton kind="entry" entries={[entry]} />
           <CopyTicketMenu entry={entry} />
         </div>
       </div>

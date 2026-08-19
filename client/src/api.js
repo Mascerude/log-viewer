@@ -279,6 +279,22 @@ export function deleteSavedSearch(id) {
   return send("DELETE", `/saved-searches/${id}`);
 }
 
+export function getShares() {
+  return get("/shares");
+}
+
+export function createShare({ kind, entries }) {
+  return send("POST", "/shares", { kind, entries });
+}
+
+export function resolveShare(id) {
+  return get(`/shares/${id}/resolve`);
+}
+
+export function deleteShare(id) {
+  return send("DELETE", `/shares/${id}`);
+}
+
 export function getSettings() {
   return get("/settings");
 }
